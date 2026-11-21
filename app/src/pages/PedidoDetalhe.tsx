@@ -30,7 +30,8 @@ export default function PedidoDetalhe() {
       pedido.condicao_pagamento_id ? db.condicoes.get(pedido.condicao_pagamento_id) : undefined,
       pedido.forma_pagamento_id ? db.formas.get(pedido.forma_pagamento_id) : undefined,
     ])
-    return { pedido, cliente, vendedor, empresa, condicao, forma, gtins }
+    const tabela = cliente?.tabela_preco_id ? (await db.tabelasPreco.get(cliente.tabela_preco_id))?.nome ?? null : null
+    return { pedido, cliente, vendedor, empresa, condicao, forma, gtins, tabela }
   }, [id])
 
   if (dados === undefined) return null

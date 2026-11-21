@@ -6,7 +6,6 @@
 // A configuração fica guardada no próprio celular.
 import { data, dataHora, docFormatado, foneFormatado } from './formato'
 import type { Cliente, CondicaoPagamento, Empresa, FormaPagamento, Pedido, Perfil } from './tipos'
-import { STATUS_LABEL } from './tipos'
 
 export interface ConfigImpressora {
   modo: 'rawbt' | 'bluetooth'
@@ -52,6 +51,7 @@ class Cupom {
   grande(on = true) { return this.raw(0x1d, 0x21, on ? 0x11 : 0) }
   alto(on = true) { return this.raw(0x1d, 0x21, on ? 0x01 : 0) } // altura dupla, mesma largura
   separador(c = '-') { return this.linha(c.repeat(this.colunas)) }
+  direita(s: string) { return this.linha(s.length >= this.colunas ? s : ' '.repeat(this.colunas - s.length) + s) }
   // texto à esquerda e valor à direita na mesma linha
   par(esq: string, dir: string) {
     const max = this.colunas - dir.length - 1
@@ -120,6 +120,7 @@ export interface DadosCupom {
   condicao?: CondicaoPagamento | null
   forma?: FormaPagamento | null
   gtins?: Map<string, string | null>
+  tabela?: string | null
 }
 
 const reais = (v: number) => Number(v ?? 0).toFixed(2).replace('.', ',')
@@ -130,49 +131,71 @@ export async function montarCupom(d: DadosCupom, cfg: ConfigImpressora): Promise
   const pontos = cfg.largura === 58 ? 384 : 576
   const c = new Cupom(colunas)
   const { pedido: p, cliente: cl, empresa: e } = d
+  const troca = d.forma?.conta_como_venda === false
+  const end = (o?: { logradouro?: string | null; numero?: string | null; complemento?: string | null; bairro?: string | null; cidade?: string | null; uf?: string | null } | null) =>
+    o?.logradouro ? `Endereco:${o.logradouro}, nro.${o.numero || 'SN'}${o.complemento ? ' ' + o.complemento : ''} - Bairro:${o.bairro ?? ''} Cidade:${o.cidade ?? ''} - ${o.uf ?? ''}` : ''
 
+  // ----- empresa (mesmo modelo do app antigo) -----
   if (cfg.qr && cfg.qrTopo && cfg.qrTexto) c.qr(cfg.qrTexto)
   if (cfg.logo) { try { c.imagem(await logoMonocromatico(pontos)) } catch { /* sem logo */ } }
-  c.centro().negrito().linha(e?.razao_social || 'Maranata Distribuidora').negrito(false)
-  if (e?.cnpj) c.linha('CNPJ ' + docFormatado(e.cnpj))
-  const contato = [e?.telefone && foneFormatado(e.telefone), e?.whatsapp && 'Zap ' + foneFormatado(e.whatsapp)].filter(Boolean).join('  ')
-  if (contato) c.linha(contato)
-  c.centro(false).separador('=')
-  c.centro().negrito().grande().linha(p.status === 'orcamento' ? 'ORCAMENTO' : `PEDIDO ${p.numero ?? ''}`).grande(false).negrito(false)
-  c.linha(dataHora(p.data_pedido)).centro(false).separador()
-
-  c.negrito().quebrado(cl?.nome_fantasia || cl?.razao_social || 'Cliente').negrito(false)
-  if (cl?.nome_fantasia && cl.razao_social !== cl.nome_fantasia) c.quebrado(cl.razao_social)
-  if (cl?.cpf_cnpj) c.linha((cl.tipo_pessoa === 'F' ? 'CPF ' : 'CNPJ ') + docFormatado(cl.cpf_cnpj))
-  const end = [cl?.logradouro && `${cl.logradouro}, ${cl.numero ?? 's/n'}`, cl?.bairro, cl?.cidade && `${cl.cidade}/${cl.uf ?? ''}`].filter(Boolean).join(' - ')
-  if (end) c.quebrado(end)
-  if (cl?.telefone) c.linha('Fone ' + foneFormatado(cl.telefone))
+  c.quebrado(e?.razao_social || 'Maranata Distribuidora')
+  if (e?.nome_fantasia && e.nome_fantasia !== e.razao_social) c.quebrado(e.nome_fantasia)
+  if (e?.cnpj) c.linha('CNPJ ' + e.cnpj)
+  if (e?.ie) c.linha('Insc. Estadual ' + e.ie)
+  if (e?.email) c.linha('Email:' + e.email)
+  if (e?.telefone) c.linha('Fone:' + foneFormatado(e.telefone))
+  const endEmp = end(e)
+  if (endEmp) { c.linha(); c.quebrado(endEmp) }
+  c.linha()
+  c.linha('Data:' + dataHora(new Date().toISOString()))
+  if (d.vendedor?.nome) c.linha('Vend.:' + d.vendedor.nome)
   c.separador()
 
-  c.negrito().par('Produto', 'Total').negrito(false)
+  // ----- pedido e cliente -----
+  const titulo = p.status === 'orcamento' ? 'ORCAMENTO' : troca ? 'TROCA' : 'PEDIDO'
+  c.negrito().alto().linha(`${titulo}:${p.numero ?? 'provisorio'}`).alto(false).negrito(false)
+  c.linha('Emissao:' + dataHora(p.data_pedido))
+  c.quebrado(`Razao:${cl?.codigo ? cl.codigo + '-' : ''}${cl?.razao_social ?? ''}`)
+  if (cl?.nome_fantasia) c.quebrado('Nome fantasia:' + cl.nome_fantasia)
+  if (cl?.cpf_cnpj) c.linha('CNPJ/CPF:' + docFormatado(cl.cpf_cnpj))
+  if (cl?.ie) c.linha('Insc. Estadual:' + cl.ie)
+  if (cl?.telefone) c.linha('Fone:' + foneFormatado(cl.telefone))
+  const endCli = end(cl)
+  if (endCli) c.quebrado(endCli)
+  c.linha('Forma cob.:' + (d.forma?.nome ?? ''))
+  c.linha('Cond.pagto.:' + (d.condicao?.nome ?? ''))
+  c.linha('Tabela de preco:' + (d.tabela ?? ''))
+  if (p.data_entrega) c.linha('Entrega:' + data(p.data_entrega))
+  c.separador()
+
+  // ----- itens, na ordem digitada -----
+  c.linha('CODIGO DESCRICAO')
+  c.par('  QTD. UN. VL UNIT', 'VL ITEM')
+  c.separador()
   for (const i of p.itens) {
-    c.quebrado(`${i.produto_codigo ?? ''} ${i.produto_nome ?? ''}`.trim())
-    c.par(`  ${qtdTxt(i.quantidade)} ${i.unidade ?? ''} x ${reais(i.preco_unitario)}${i.desconto ? ` -${reais(i.desconto)}` : ''}`, reais(i.total))
+    c.quebrado(`${i.produto_codigo ?? ''} ${(i.produto_nome ?? '').toUpperCase()}`.trim())
+    c.par(`  ${qtdTxt(i.quantidade)} ${(i.unidade ?? '').toLowerCase()} X R$ ${reais(i.preco_unitario)}${i.desconto ? ` -${reais(i.desconto)}` : ''}`, reais(i.total))
     const g = d.gtins?.get(i.produto_id)
     if (cfg.codigoBarras && g) c.ean(g)
   }
   c.separador()
-  c.par(`Itens: ${p.itens.length}`, `Subtotal ${reais(p.subtotal)}`)
-  if (p.desconto) c.par('Desconto', '-' + reais(p.desconto))
-  if (p.frete) c.par('Frete', reais(p.frete))
-  c.negrito().alto().par('TOTAL', 'R$ ' + reais(p.total)).alto(false).negrito(false)
-  c.separador()
-  const pagto = [d.condicao?.nome, d.forma?.nome].filter(Boolean).join(' / ')
-  if (pagto) c.linha('Pagamento: ' + pagto)
-  if (p.data_entrega) c.linha('Entrega: ' + data(p.data_entrega))
-  if (d.vendedor?.nome) c.linha('Vendedor: ' + d.vendedor.nome)
-  c.linha('Situacao: ' + STATUS_LABEL[p.status])
-  if (p.observacao) { c.linha(); c.quebrado('Obs: ' + p.observacao) }
-  c.linha().linha().centro().linha('_'.repeat(Math.min(colunas, 32))).linha('Assinatura do cliente').centro(false)
+
+  // ----- totais -----
+  const vols = p.itens.reduce((s, i) => s + Number(i.quantidade), 0)
+  c.par(`${p.itens.length} itens`, `Subtotal:R$ ${reais(p.subtotal)}`)
+  c.linha(`${qtdTxt(vols)} Vols.`)
+  const pct = p.subtotal ? Math.round((p.desconto / p.subtotal) * 1000) / 10 : 0
+  c.direita(`Desc.(${qtdTxt(pct)}%):R$ ${reais(p.desconto)}`)
+  c.direita(`Frete: R$ ${reais(p.frete)}`)
+  c.negrito().alto().direita(`Total: R$ ${reais(p.total)}`).alto(false).negrito(false)
+  if (p.observacao) { c.linha(); c.quebrado('Obs:' + p.observacao) }
+  if (troca) { c.linha(); c.centro().negrito().linha('*** TROCA - NAO E VENDA ***').negrito(false).centro(false) }
+
   const rodape = cfg.rodape || e?.rodape_pedido
-  if (rodape) { c.linha(); c.centro(); c.quebrado(rodape); c.centro(false) }
+  c.linha()
+  if (rodape) { c.centro(); c.quebrado(rodape); c.centro(false) }
+  c.centro().linha('APP MARANATA PEDIDOS').centro(false)
   if (cfg.qr && !cfg.qrTopo && cfg.qrTexto) { c.linha(); c.qr(cfg.qrTexto) }
-  c.centro().linha('Documento sem valor fiscal').centro(false)
   for (let k = 0; k < Math.max(0, cfg.avancar); k++) c.linha()
   c.raw(0x1d, 0x56, 0x42, 0) // corta o papel (se a impressora tiver guilhotina)
   const um = c.bytes()
