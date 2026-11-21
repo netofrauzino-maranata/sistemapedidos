@@ -64,9 +64,15 @@ export default function Inicio() {
           <Link to="/clientes/novo" className="cartao flex flex-col items-center gap-1 p-3 text-center text-sm font-semibold">
             <Icone nome="cliente" className="h-6 w-6 text-marca-600" />Novo cliente
           </Link>
-          <Link to="/catalogo" className="cartao flex flex-col items-center gap-1 p-3 text-center text-sm font-semibold">
-            <Icone nome="livro" className="h-6 w-6 text-marca-600" />Catálogo
-          </Link>
+          {gestor ? (
+            <Link to="/carga" className="cartao flex flex-col items-center gap-1 p-3 text-center text-sm font-semibold">
+              <Icone nome="caminhao" className="h-6 w-6 text-marca-600" />Carga
+            </Link>
+          ) : (
+            <Link to="/catalogo" className="cartao flex flex-col items-center gap-1 p-3 text-center text-sm font-semibold">
+              <Icone nome="livro" className="h-6 w-6 text-marca-600" />Catálogo
+            </Link>
+          )}
         </div>
 
         {gestor && alertas && (alertas.baixo > 0 || alertas.vencendo > 0 || (resumo?.aConfirmar ?? 0) > 0) && (

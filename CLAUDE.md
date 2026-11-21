@@ -70,6 +70,9 @@ Play Store (futuro): empacotar a PWA como TWA com Bubblewrap; precisa do arquivo
 `tabelas_preco` + `tabela_preco_itens` (só exceções: produto sem item usa `preco_venda`). Cliente tem `tabela_preco_id`, que só o gestor muda (trigger).
 O pedido no celular usa `mapaPrecos()` de `db.ts`. Tela do gestor: Mais > Tabelas de preço.
 
+## Carga do dia
+Tela `/carga` (gestor, `pages/Carga.tsx`): pedidos pendente/confirmado/faturado do dia; o gestor desmarca o que não vai (fica salvo só no celular, localStorage por dia). Relatórios em `lib/carga.ts`: resumo das vendas, itens somados e detalhado por cliente, em PDF (`pdfCarga`), térmica (`cupomCarga`) ou texto. Trocas entram na carga mas não somam no valor.
+
 ## Dados de clientes
 O repositório é público: nunca coloque aqui planilhas, scripts de importação ou qualquer dado de clientes.
 

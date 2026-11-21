@@ -22,6 +22,7 @@ import Relatorios from './pages/Relatorios'
 import Usuarios from './pages/Usuarios'
 import TabelasPreco from './pages/TabelasPreco'
 import Impressora from './pages/Impressora'
+import Carga from './pages/Carga'
 
 function SoGestor({ children }: { children: ReactNode }) {
   const { gestor } = useAuth()
@@ -62,6 +63,7 @@ export default function App() {
         <Route path="mais" element={<Mais />} />
         <Route path="estoque" element={<SoGestor><Estoque /></SoGestor>} />
         <Route path="estoque/entrada" element={<SoGestor><Entrada /></SoGestor>} />
+        <Route path="carga" element={<SoGestor><Carga /></SoGestor>} />
         <Route path="exportar-nfe" element={<SoGestor><ExportarNfe /></SoGestor>} />
         <Route path="config/empresa" element={<SoGestor><Empresa /></SoGestor>} />
         <Route path="config/usuarios" element={<SoGestor><Usuarios /></SoGestor>} />

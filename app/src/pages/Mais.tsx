@@ -9,6 +9,7 @@ export default function Mais() {
   const { perfil, gestor, sair } = useAuth()
   const sync = useEstadoSync()
   const itens: [string, string, string, boolean][] = [
+    ['/carga', 'Carga do dia', 'caminhao', true],
     ['/estoque', 'Estoque e validades', 'estoque', true],
     ['/estoque/entrada', 'Entrada de mercadoria', 'entrada', true],
     ['/catalogo', 'Catálogo em PDF', 'livro', false],
