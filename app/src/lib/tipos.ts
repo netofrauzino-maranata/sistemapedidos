@@ -38,7 +38,7 @@ export interface Empresa {
 
 export interface Categoria { id: string; nome: string; ordem: number; ativo: boolean; atualizado_em: string }
 export interface CondicaoPagamento { id: string; nome: string; parcelas_dias: number[]; ativo: boolean; atualizado_em: string }
-export interface FormaPagamento { id: string; nome: string; codigo_nfe: string | null; ativo: boolean; atualizado_em: string }
+export interface FormaPagamento { id: string; nome: string; codigo_nfe: string | null; ativo: boolean; conta_como_venda?: boolean; atualizado_em: string }
 export interface Fornecedor { id: string; nome: string; cpf_cnpj: string | null; telefone: string | null; cidade: string | null; uf: string | null; ativo: boolean; atualizado_em: string }
 
 export interface Produto {
@@ -104,6 +104,7 @@ export interface Cliente {
   vendedor_id: string | null
   condicao_pagamento_id: string | null
   forma_pagamento_id: string | null
+  tabela_preco_id?: string | null
   limite_credito: number | null
   observacao: string | null
   ativo: boolean
@@ -149,6 +150,7 @@ export interface Pedido {
   itens: ItemPedido[]
   _sync: SyncStatus
   _erro?: string
+  desconto_pct?: number | null // só no celular: desconto digitado em %
 }
 
 export const STATUS_LABEL: Record<StatusPedido, string> = {
@@ -170,3 +172,20 @@ export const STATUS_COR: Record<StatusPedido, string> = {
 }
 
 export const UNIDADES = ['UN', 'CX', 'FD', 'PCT', 'KG', 'G', 'LT', 'ML', 'DZ', 'SC', 'BD', 'GF']
+
+// Tabela de preço: guarda só os produtos com preço diferente do normal.
+export interface TabelaPreco {
+  id: string
+  codigo: string | null
+  nome: string
+  ativo: boolean
+  atualizado_em?: string
+}
+export interface TabelaPrecoItem {
+  id: string
+  tabela_id: string
+  produto_id: string
+  preco: number
+  ativo: boolean
+  atualizado_em?: string
+}

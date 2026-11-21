@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth'
 import { baixarArquivo, gerarCsv } from '../lib/csv'
 import { db } from '../lib/db'
 import { brl, data, hojeISO, num } from '../lib/formato'
+import { formasForaDeVenda } from '../lib/db'
 import { nomeCliente } from '../lib/hooks'
 import { STATUS_LABEL, type StatusPedido } from '../lib/tipos'
 
@@ -40,18 +41,22 @@ export default function Relatorios() {
     const prod = new Map(produtos.map((p) => [p.id, p]))
     const dia = (s: string) => new Date(s).toLocaleDateString('en-CA')
     const validos: StatusPedido[] = incluirOrc ? ['orcamento', 'pendente', 'confirmado', 'faturado', 'entregue'] : ['pendente', 'confirmado', 'faturado', 'entregue']
-    const lista = pedidos.filter((p) => {
+    const foraDeVenda = await formasForaDeVenda()
+    const doPeriodo = pedidos.filter((p) => {
       const d = dia(p.data_pedido)
       if (d < ini || d > fim) return false
       if (!gestor && p.vendedor_id !== perfil?.id) return false
       if (vendedor && p.vendedor_id !== vendedor) return false
       return validos.includes(p.status)
     })
+    // Trocas baixam estoque mas não são venda: ficam fora de todos os totais
+    const lista = doPeriodo.filter((p) => !foraDeVenda.has(p.forma_pagamento_id ?? ''))
+    const trocas = doPeriodo.filter((p) => foraDeVenda.has(p.forma_pagamento_id ?? ''))
     const total = lista.reduce((s, p) => s + p.total, 0)
     const porDia = new Map<string, number>()
     lista.forEach((p) => porDia.set(dia(p.data_pedido), (porDia.get(dia(p.data_pedido)) ?? 0) + p.total))
     const porStatus = new Map<string, { n: number; t: number }>()
-    pedidos.filter((p) => { const d = dia(p.data_pedido); return d >= ini && d <= fim && (gestor || p.vendedor_id === perfil?.id) && (!vendedor || p.vendedor_id === vendedor) })
+    pedidos.filter((p) => { const d = dia(p.data_pedido); return d >= ini && d <= fim && (gestor || p.vendedor_id === perfil?.id) && (!vendedor || p.vendedor_id === vendedor) && !foraDeVenda.has(p.forma_pagamento_id ?? '') })
       .forEach((p) => { const x = porStatus.get(p.status) ?? { n: 0, t: 0 }; porStatus.set(p.status, { n: x.n + 1, t: x.t + p.total }) })
 
     const agrupar = (chaveDe: (p: (typeof lista)[0]) => string, nomeDe: (k: string) => string): Linha[] => {
@@ -72,7 +77,7 @@ export default function Relatorios() {
     }))
     const compraram = new Set(lista.map((p) => p.cliente_id))
     const ultimaCompra = new Map<string, string>()
-    pedidos.filter((p) => validos.includes(p.status)).forEach((p) => {
+    pedidos.filter((p) => validos.includes(p.status) && !foraDeVenda.has(p.forma_pagamento_id ?? '')).forEach((p) => {
       const u = ultimaCompra.get(p.cliente_id)
       if (!u || p.data_pedido > u) ultimaCompra.set(p.cliente_id, p.data_pedido)
     })
@@ -83,6 +88,7 @@ export default function Relatorios() {
     })).sort((a, b) => a.nome.localeCompare(b.nome))
 
     return {
+      trocasQtd: trocas.length, trocasTotal: trocas.reduce((s, p) => s + p.total, 0),
       total, qtd: lista.length, ticket: lista.length ? total / lista.length : 0,
       clientesAtendidos: compraram.size, carteira: carteira.length,
       porDia: [...porDia.entries()].sort(), porStatus,
@@ -144,6 +150,9 @@ export default function Relatorios() {
               <div className="cartao"><p className="text-xs text-stone-500">Positivação</p><p className="text-xl font-extrabold">{r.clientesAtendidos}/{r.carteira}</p>
                 <p className="text-xs text-stone-500">{r.carteira ? Math.round((r.clientesAtendidos / r.carteira) * 100) : 0}% da carteira</p></div>
             </div>
+            {r.trocasQtd > 0 && (
+              <p className="cartao text-sm text-stone-600">Trocas no período (fora das vendas): <b>{r.trocasQtd}</b> · {brl(r.trocasTotal)}</p>
+            )}
             <section className="cartao">
               <h2 className="mb-2 font-bold">Vendas por dia</h2>
               {!r.porDia.length && <p className="text-sm text-stone-500">Sem vendas no período.</p>}

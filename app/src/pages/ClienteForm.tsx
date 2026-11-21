@@ -28,6 +28,7 @@ export default function ClienteForm() {
   const { perfil, gestor } = useAuth()
   const condicoes = useCondicoes()
   const formas = useFormas()
+  const tabelas = useLiveQuery(async () => (await db.tabelasPreco.toArray()).filter((t) => t.ativo).sort((a, b) => a.nome.localeCompare(b.nome)), []) ?? []
   const perfis = usePerfisMapa()
   const [c, setC] = useState<Cliente | null>(null)
   const [msg, setMsg] = useState<{ tipo: 'erro' | 'ok' | 'info'; texto: string } | null>(null)
@@ -52,7 +53,11 @@ export default function ClienteForm() {
     try {
       const r = await buscarCnpj(c!.cpf_cnpj ?? '')
       if (!r) setMsg({ tipo: 'erro', texto: 'CNPJ não encontrado.' })
-      else { setC({ ...c!, ...r, telefone: c!.telefone || r.telefone, email: c!.email || r.email }); setMsg({ tipo: 'ok', texto: 'Dados preenchidos pela Receita. Confira.' }) }
+      else {
+        setC({ ...c!, ...r, telefone: c!.telefone || r.telefone, email: c!.email || r.email })
+        const ie = r.ie ? ` Inscrição estadual ${r.ie} encontrada.` : r.indicador_ie === 9 ? ' Sem inscrição estadual ativa (não contribuinte).' : ' Inscrição estadual não consultada agora: digite ou tente de novo em 1 minuto.'
+        setMsg({ tipo: 'ok', texto: 'Dados preenchidos pela Receita.' + ie + ' Confira.' })
+      }
     } catch { setMsg({ tipo: 'erro', texto: 'Sem internet para consultar o CNPJ.' }) }
     setBuscando(false)
   }
@@ -125,7 +130,9 @@ export default function ClienteForm() {
                   <option value={1}>Contribuinte</option><option value={2}>Isento</option><option value={9}>Não contribuinte</option>
                 </select>
               </Campo>
-              <Campo rotulo="Inscrição estadual"><input className="campo" {...txt('ie')} /></Campo>
+              <Campo rotulo="Inscrição estadual"><input className="campo" inputMode="numeric" {...txt('ie')} /></Campo>
+              <a className="col-span-2 -mt-1 text-xs font-semibold text-marca-700" target="_blank" rel="noreferrer"
+                href="https://dfe-portal.svrs.rs.gov.br/NFE/CCC">Consultar inscrição estadual no Cadastro de Contribuintes (SEFAZ)</a>
             </div>
           )}
         </section>
@@ -168,6 +175,11 @@ export default function ClienteForm() {
           </Campo>
           {gestor && (
             <>
+              <Campo rotulo="Tabela de preço" className="col-span-2">
+                <select className="campo" value={c.tabela_preco_id ?? ''} onChange={(e) => set({ tabela_preco_id: e.target.value || null })}>
+                  <option value="">Preço normal</option>{tabelas.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
+                </select>
+              </Campo>
               <Campo rotulo="Vendedor responsável">
                 <select className="campo" value={c.vendedor_id ?? ''} onChange={(e) => set({ vendedor_id: e.target.value || null })}>
                   <option value="">Todos os vendedores</option>

@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie'
 import type {
   Categoria, Cliente, CondicaoPagamento, Empresa, EstoqueLote, EstoqueProduto,
-  FormaPagamento, Lote, Pedido, Perfil, Produto,
+  FormaPagamento, Lote, Pedido, Perfil, Produto, TabelaPreco, TabelaPrecoItem,
 } from './tipos'
 
 // Banco local do celular (IndexedDB). É daqui que as telas leem,
@@ -22,6 +22,8 @@ class BancoLocal extends Dexie {
   empresa!: Table<Empresa, number>
   pedidos!: Table<Pedido, string>
   meta!: Table<Meta, string>
+  tabelasPreco!: Table<TabelaPreco, string>
+  tabelaItens!: Table<TabelaPrecoItem, string>
 
   constructor() {
     super('maranata')
@@ -39,6 +41,10 @@ class BancoLocal extends Dexie {
       pedidos: 'id, numero, cliente_id, vendedor_id, data_pedido, status, _sync',
       meta: 'chave',
     })
+    this.version(2).stores({
+      tabelasPreco: 'id',
+      tabelaItens: 'id, tabela_id, produto_id',
+    })
   }
 }
 
@@ -54,4 +60,18 @@ export async function setMeta(chave: string, valor: string) {
 export async function limparBancoLocal() {
   await db.delete()
   await db.open()
+}
+
+// Preço de cada produto para um cliente: o da tabela dele (se houver) ou o normal.
+export async function mapaPrecos(tabelaId?: string | null): Promise<Map<string, number>> {
+  if (!tabelaId) return new Map()
+  const tabela = await db.tabelasPreco.get(tabelaId)
+  if (!tabela?.ativo) return new Map()
+  const itens = await db.tabelaItens.where('tabela_id').equals(tabelaId).filter((i) => i.ativo).toArray()
+  return new Map(itens.map((i) => [i.produto_id, Number(i.preco)]))
+}
+
+// Formas que não são venda (ex.: Trocas): baixam estoque mas ficam fora dos relatórios de venda.
+export async function formasForaDeVenda(): Promise<Set<string>> {
+  return new Set((await db.formas.toArray()).filter((f) => f.conta_como_venda === false).map((f) => f.id))
 }

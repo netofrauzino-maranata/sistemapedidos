@@ -20,6 +20,8 @@ import ProdutoForm from './pages/ProdutoForm'
 import Produtos from './pages/Produtos'
 import Relatorios from './pages/Relatorios'
 import Usuarios from './pages/Usuarios'
+import TabelasPreco from './pages/TabelasPreco'
+import Impressora from './pages/Impressora'
 
 function SoGestor({ children }: { children: ReactNode }) {
   const { gestor } = useAuth()
@@ -63,6 +65,9 @@ export default function App() {
         <Route path="exportar-nfe" element={<SoGestor><ExportarNfe /></SoGestor>} />
         <Route path="config/empresa" element={<SoGestor><Empresa /></SoGestor>} />
         <Route path="config/usuarios" element={<SoGestor><Usuarios /></SoGestor>} />
+        <Route path="config/impressora" element={<Impressora />} />
+        <Route path="config/tabelas" element={<SoGestor><TabelasPreco /></SoGestor>} />
+        <Route path="config/tabelas/:id" element={<SoGestor><TabelasPreco /></SoGestor>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -56,7 +56,7 @@ npm install
 npm run dev                  # http://localhost:5173
 npm run build                # gera app/dist
 ```
-Deploy: Netlify conectado ao GitHub, lê `netlify.toml`. Variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` ficam no painel do Netlify.
+Deploy: Netlify conectado ao GitHub, lê `netlify.toml`. O repositório é público de propósito: o Netlify grátis bloqueia build de repo privado quando o autor do commit não é membro da conta (commits do Claude). Não há segredo no código; a chave em `app/.env.production` é a pública. Variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` ficam no painel do Netlify.
 Endereço: `pedidos.maranatadistribuidora.com.br` (CNAME no Registro.br apontando para o site do Netlify).
 Play Store (futuro): empacotar a PWA como TWA com Bubblewrap; precisa do arquivo `/.well-known/assetlinks.json` em `app/public`.
 
@@ -64,8 +64,16 @@ Play Store (futuro): empacotar a PWA como TWA com Bubblewrap; precisa do arquivo
 - Vendedor consegue ler `preco_custo` (vem junto no select de produtos). Se o Neto quiser esconder custo, mover para tabela só do gestor.
 - Formato exato de importação do emissor de NF-e do Neto ainda não definido (hoje exporta CSV genérico e JSON).
 - Relatórios do app antigo (vendasmobile) ainda serão enviados para replicar.
-- Tabela de preços por cliente e comissão de vendedor não existem ainda.
+- Comissão de vendedor não existe ainda.
+
+## Tabelas de preço
+`tabelas_preco` + `tabela_preco_itens` (só exceções: produto sem item usa `preco_venda`). Cliente tem `tabela_preco_id`, que só o gestor muda (trigger).
+O pedido no celular usa `mapaPrecos()` de `db.ts`. Tela do gestor: Mais > Tabelas de preço.
+
+## Dados de clientes
+O repositório é público: nunca coloque aqui planilhas, scripts de importação ou qualquer dado de clientes.
 
 ## Identidade visual
-Verde escuro `#14532D` (marca), âmbar `#F59E0B` (destaque), fundo creme `#FBF7EF`. Ícone em `app/public/favicon.svg`.
+Azul da logo `#00268B` (marca), amarelo `#FFD200` (destaque), vermelho `#E30613` (apoio), fundo `#F4F6FB`.
+Logo e mascote em `app/public/logo.png` e `app/public/mascote.png` (login, topo do Início). Logo do PDF em `app/src/assets/logo-pdf.jpg`. Ícones do app em `app/public/icon-*.png`.
 Fluxos inspirados no app que o Neto usava, mas visual próprio da Maranata.

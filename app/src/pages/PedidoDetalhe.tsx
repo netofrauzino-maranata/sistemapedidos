@@ -8,6 +8,7 @@ import { db } from '../lib/db'
 import { brl, data, dataHora, docFormatado, foneFormatado, num, soDigitos, uuid } from '../lib/formato'
 import { nomeCliente } from '../lib/hooks'
 import { abrirPdf, compartilharPdf, pdfPedido } from '../lib/pdf'
+import { imprimir, lerConfig, montarCupom } from '../lib/impressora'
 import { supabase } from '../lib/supabase'
 import { sincronizar } from '../lib/sync'
 import { STATUS_COR, STATUS_LABEL, type Pedido, type StatusPedido } from '../lib/tipos'
@@ -23,12 +24,14 @@ export default function PedidoDetalhe() {
   const dados = useLiveQuery(async () => {
     const pedido = await db.pedidos.get(id!)
     if (!pedido) return null
+    const gtins = new Map((await db.produtos.bulkGet(pedido.itens.map((i) => i.produto_id))).filter(Boolean).map((x) => [x!.id, x!.gtin]))
     const [cliente, vendedor, empresa, condicao, forma] = await Promise.all([
       db.clientes.get(pedido.cliente_id), db.perfis.get(pedido.vendedor_id), db.empresa.get(1),
       pedido.condicao_pagamento_id ? db.condicoes.get(pedido.condicao_pagamento_id) : undefined,
       pedido.forma_pagamento_id ? db.formas.get(pedido.forma_pagamento_id) : undefined,
     ])
-    return { pedido, cliente, vendedor, empresa, condicao, forma }
+    const tabela = cliente?.tabela_preco_id ? (await db.tabelasPreco.get(cliente.tabela_preco_id))?.nome ?? null : null
+    return { pedido, cliente, vendedor, empresa, condicao, forma, gtins, tabela }
   }, [id])
 
   if (dados === undefined) return null
@@ -55,6 +58,12 @@ export default function PedidoDetalhe() {
     } catch (e) {
       setMsg({ tipo: 'erro', texto: (e as Error).message })
     } finally { setMudando(false) }
+  }
+
+  async function imprimirCupom() {
+    const cfg = lerConfig()
+    try { await imprimir(await montarCupom(dados!, cfg), cfg) }
+    catch (e) { alert('Não foi possível imprimir: ' + (e as Error).message + '\nConfira em Mais > Impressora Bluetooth.') }
   }
 
   async function duplicar() {
@@ -138,6 +147,7 @@ export default function PedidoDetalhe() {
           <button className="btn-secundario" onClick={() => abrirPdf(pdfPedido(dados))}><Icone nome="pdf" /> Ver / imprimir</button>
           <button className="btn-secundario" onClick={whatsapp}><Icone nome="whatsapp" /> WhatsApp</button>
           <button className="btn-secundario" onClick={() => void duplicar()}><Icone nome="mais" /> Repetir pedido</button>
+          <button className="btn-secundario col-span-2" onClick={() => void imprimirCupom()}><Icone nome="impressora" /> Imprimir na térmica</button>
         </div>
 
         {(proximos.length > 0 || (podeEditar && p.status !== 'cancelado')) && (

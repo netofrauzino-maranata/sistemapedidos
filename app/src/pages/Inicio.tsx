@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Cabecalho, Icone } from '../components/ui'
 import { IndicadorSync, useEstadoSync } from '../components/Layout'
 import { useAuth } from '../lib/auth'
-import { db } from '../lib/db'
+import { db, formasForaDeVenda } from '../lib/db'
 import { brl, dataHora, hojeISO } from '../lib/formato'
 import { nomeCliente, useClientesMapa } from '../lib/hooks'
 import { STATUS_COR, STATUS_LABEL } from '../lib/tipos'
@@ -18,7 +18,8 @@ export default function Inicio() {
   const resumo = useLiveQuery(async () => {
     const pedidos = await db.pedidos.toArray()
     const meus = gestor ? pedidos : pedidos.filter((p) => p.vendedor_id === perfil?.id)
-    const validos = meus.filter((p) => p.status !== 'cancelado' && p.status !== 'orcamento')
+    const trocas = await formasForaDeVenda()
+    const validos = meus.filter((p) => p.status !== 'cancelado' && p.status !== 'orcamento' && !trocas.has(p.forma_pagamento_id ?? ''))
     const diaLocal = (iso: string) => new Date(iso).toLocaleDateString('en-CA')
     const doDia = validos.filter((p) => diaLocal(p.data_pedido) === hoje)
     const doMes = validos.filter((p) => diaLocal(p.data_pedido).startsWith(mes))
@@ -41,7 +42,7 @@ export default function Inicio() {
 
   return (
     <>
-      <Cabecalho titulo={`Olá, ${perfil?.nome?.split(' ')[0] ?? ''}`} acao={<IndicadorSync />} />
+      <Cabecalho logo titulo={`Olá, ${perfil?.nome?.split(' ')[0] ?? ''}`} acao={<IndicadorSync />} />
       <main className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="cartao bg-marca-700 text-white ring-0">
@@ -82,7 +83,15 @@ export default function Inicio() {
             <h2 className="font-bold">Últimos pedidos</h2>
             <Link to="/pedidos" className="text-sm font-semibold text-marca-700">Ver todos</Link>
           </div>
-          {!resumo?.ultimos.length && <p className="py-4 text-center text-sm text-stone-500">Nenhum pedido ainda.</p>}
+          {!resumo?.ultimos.length && (
+            <div className="flex items-center gap-3 py-2">
+              <img src="/mascote.png" alt="" className="h-24 w-auto" />
+              <div>
+                <p className="font-bold text-marca-700">Nenhum pedido ainda.</p>
+                <Link to="/pedidos/novo" className="text-sm font-semibold text-apoio">Fazer o primeiro pedido</Link>
+              </div>
+            </div>
+          )}
           <ul className="divide-y divide-stone-100">
             {resumo?.ultimos.map((p) => (
               <li key={p.id}>

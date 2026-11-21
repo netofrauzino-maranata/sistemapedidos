@@ -12,8 +12,10 @@ export default function Mais() {
     ['/estoque', 'Estoque e validades', 'estoque', true],
     ['/estoque/entrada', 'Entrada de mercadoria', 'entrada', true],
     ['/catalogo', 'Catálogo em PDF', 'livro', false],
+    ['/config/impressora', 'Impressora Bluetooth', 'impressora', false],
     ['/relatorios', 'Relatórios', 'grafico', false],
     ['/exportar-nfe', 'Exportar vendas para NF-e', 'exportar', true],
+    ['/config/tabelas', 'Tabelas de preço', 'preco', true],
     ['/config/empresa', 'Dados da empresa', 'empresa', true],
     ['/config/usuarios', 'Usuários e vendedores', 'usuarios', true],
   ]

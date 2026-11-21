@@ -35,5 +35,28 @@ export async function buscarCnpj(cnpj: string) {
     codigo_ibge: j.codigo_municipio_ibge ? String(j.codigo_municipio_ibge) : null,
     telefone: tel || null,
     email: (j.email as string)?.toLowerCase() || null,
+    ...(await buscarIe(d, j.uf as string)),
+  }
+}
+
+// Inscrição estadual: a Receita (BrasilAPI) não informa. Vem da API pública do CNPJ.ws,
+// que traz a IE do cadastro das SEFAZ (cobre Goiás). Grátis, com limite de 3 consultas
+// por minuto. Se falhar, o cadastro segue e a IE é digitada à mão.
+type IeWs = { inscricao_estadual?: string; ativo?: boolean; estado?: { sigla?: string } }
+export async function buscarIe(cnpj: string, uf?: string): Promise<{ ie?: string; indicador_ie?: 1 | 9 }> {
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 10000)
+    const r = await fetch(`https://publica.cnpj.ws/cnpj/${soDigitos(cnpj)}`, { signal: ctrl.signal })
+    clearTimeout(t)
+    if (!r.ok) return {}
+    const j = await r.json()
+    const lista = (j?.estabelecimento?.inscricoes_estaduais ?? j?.inscricoes_estaduais) as IeWs[] | undefined
+    if (!Array.isArray(lista)) return {}
+    const ativas = lista.filter((x) => x.ativo !== false && x.inscricao_estadual)
+    const ie = ativas.find((x) => !uf || x.estado?.sigla === uf) ?? ativas[0]
+    return ie ? { ie: soDigitos(ie.inscricao_estadual), indicador_ie: 1 } : { indicador_ie: 9 }
+  } catch {
+    return {}
   }
 }
