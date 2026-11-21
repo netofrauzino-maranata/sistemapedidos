@@ -70,3 +70,8 @@ export async function mapaPrecos(tabelaId?: string | null): Promise<Map<string, 
   const itens = await db.tabelaItens.where('tabela_id').equals(tabelaId).filter((i) => i.ativo).toArray()
   return new Map(itens.map((i) => [i.produto_id, Number(i.preco)]))
 }
+
+// Formas que não são venda (ex.: Trocas): baixam estoque mas ficam fora dos relatórios de venda.
+export async function formasForaDeVenda(): Promise<Set<string>> {
+  return new Set((await db.formas.toArray()).filter((f) => f.conta_como_venda === false).map((f) => f.id))
+}

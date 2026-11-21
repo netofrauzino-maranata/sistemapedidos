@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Cabecalho, Icone } from '../components/ui'
 import { IndicadorSync, useEstadoSync } from '../components/Layout'
 import { useAuth } from '../lib/auth'
-import { db } from '../lib/db'
+import { db, formasForaDeVenda } from '../lib/db'
 import { brl, dataHora, hojeISO } from '../lib/formato'
 import { nomeCliente, useClientesMapa } from '../lib/hooks'
 import { STATUS_COR, STATUS_LABEL } from '../lib/tipos'
@@ -18,7 +18,8 @@ export default function Inicio() {
   const resumo = useLiveQuery(async () => {
     const pedidos = await db.pedidos.toArray()
     const meus = gestor ? pedidos : pedidos.filter((p) => p.vendedor_id === perfil?.id)
-    const validos = meus.filter((p) => p.status !== 'cancelado' && p.status !== 'orcamento')
+    const trocas = await formasForaDeVenda()
+    const validos = meus.filter((p) => p.status !== 'cancelado' && p.status !== 'orcamento' && !trocas.has(p.forma_pagamento_id ?? ''))
     const diaLocal = (iso: string) => new Date(iso).toLocaleDateString('en-CA')
     const doDia = validos.filter((p) => diaLocal(p.data_pedido) === hoje)
     const doMes = validos.filter((p) => diaLocal(p.data_pedido).startsWith(mes))

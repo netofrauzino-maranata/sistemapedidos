@@ -28,11 +28,14 @@ export function Cabecalho({ titulo, voltar, acao, logo }: { titulo: string; volt
   )
 }
 
-export function Busca({ valor, onChange, placeholder = 'Buscar...' }: { valor: string; onChange: (v: string) => void; placeholder?: string }) {
+export function Busca({ valor, onChange, placeholder = 'Buscar...', autoFocus, onEnter }: {
+  valor: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean; onEnter?: () => void
+}) {
   return (
     <div className="relative">
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"><Icone nome="busca" /></span>
-      <input className="campo pl-10" type="search" value={valor} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+      <input className="campo pl-10" type="search" value={valor} placeholder={placeholder} autoFocus={autoFocus} enterKeyHint="search"
+        onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && onEnter) { e.preventDefault(); onEnter() } }} />
     </div>
   )
 }
@@ -115,6 +118,7 @@ const caminhos: Record<string, ReactNode> = {
   usuarios: <><circle cx="9" cy="8" r="3.5" /><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5" /><path d="M16 4a3.5 3.5 0 0 1 0 7M22 20c0-3-2-5-5-5.4" /></>,
   sair: <><path d="M9 21H5V3h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>,
   alerta: <><path d="M12 3l10 18H2z" /><path d="M12 10v4M12 18h.01" /></>,
+  impressora: <><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></>,
   preco: <><path d="M20.6 13.4L13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" /><circle cx="7.5" cy="7.5" r="1.5" /></>,
   entrada: <><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" /></>,
 }

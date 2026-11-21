@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Aviso, Busca, Cabecalho, Campo, Folha, Icone, Vazio } from '../components/ui'
 import { useAuth } from '../lib/auth'
 import { db, mapaPrecos } from '../lib/db'
-import { arred, brl, docFormatado, normalizar, num, uuid } from '../lib/formato'
+import { arred, brl, docFormatado, filtrarProdutos, normalizar, num, uuid } from '../lib/formato'
 import { nomeCliente, useCondicoes, useEstoqueMapa, useFormas } from '../lib/hooks'
 import { sincronizar } from '../lib/sync'
 import type { Cliente, ItemPedido, Pedido, Produto } from '../lib/tipos'
@@ -60,7 +60,8 @@ export default function PedidoForm() {
   const precosTabela = useLiveQuery(() => mapaPrecos(cliente?.tabela_preco_id), [cliente?.tabela_preco_id])
   const nomeTabela = useLiveQuery(async () => (cliente?.tabela_preco_id ? (await db.tabelasPreco.get(cliente.tabela_preco_id))?.nome : undefined), [cliente?.tabela_preco_id])
   const subtotal = useMemo(() => arred((p?.itens ?? []).reduce((s, i) => s + i.total, 0)), [p?.itens])
-  const total = arred(subtotal - (p?.desconto ?? 0) + (p?.frete ?? 0))
+  const descontoTotal = p?.desconto_pct != null ? arred(subtotal * p.desconto_pct / 100) : (p?.desconto ?? 0)
+  const total = arred(subtotal - descontoTotal + (p?.frete ?? 0))
 
   if (!p) return null
   const set = (parcial: Partial<Rascunho>) => setP({ ...p, ...parcial })
@@ -113,7 +114,7 @@ export default function PedidoForm() {
     if (total < 0) return setErro('O desconto é maior que o pedido.')
     const pedido: Pedido = {
       ...p!, numero: p!.numero ?? null, vendedor_id: p!.vendedor_id ?? perfil!.id,
-      subtotal, total, _sync: 'pendente', _erro: undefined,
+      desconto: descontoTotal, subtotal, total, _sync: 'pendente', _erro: undefined,
     }
     await db.pedidos.put(pedido)
     if (!id) localStorage.removeItem(CHAVE_RASCUNHO)
@@ -181,19 +182,39 @@ export default function PedidoForm() {
               {formas.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
             </select>
           </Campo>
+          {formas.find((f) => f.id === p.forma_pagamento_id)?.conta_como_venda === false && (
+            <p className="col-span-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">Troca: tira do estoque, mas não entra no relatório de vendas.</p>
+          )}
           <Campo rotulo="Entrega prevista">
             <input type="date" className="campo" value={p.data_entrega ?? ''} onChange={(e) => set({ data_entrega: e.target.value || null })} />
           </Campo>
-          <Campo rotulo="Tipo">
-            <select className="campo" value={p.status} onChange={(e) => set({ status: e.target.value as Pedido['status'] })}>
-              <option value="pendente">Pedido</option>
-              <option value="orcamento">Orçamento (não baixa estoque)</option>
-              {gestor && <><option value="confirmado">Confirmado</option><option value="faturado">Faturado</option><option value="entregue">Entregue</option></>}
-            </select>
-          </Campo>
-          <Campo rotulo="Desconto no total (R$)">
-            <input type="number" inputMode="decimal" step="0.01" min="0" className="campo" value={p.desconto || ''}
-              onChange={(e) => set({ desconto: Number(e.target.value) || 0 })} />
+          <div className="col-span-2">
+            <span className="rotulo">Isto é um</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => set({ status: p.status === 'orcamento' ? 'pendente' : p.status })}
+                className={'rounded-xl p-2.5 text-left ring-1 ' + (p.status !== 'orcamento' ? 'bg-marca-700 text-white ring-marca-700' : 'bg-white ring-stone-300')}>
+                <span className="block font-bold">Pedido de venda</span>
+                <span className={'block text-xs ' + (p.status !== 'orcamento' ? 'text-marca-100' : 'text-stone-500')}>Cliente comprou. Tira do estoque.</span>
+              </button>
+              <button type="button" onClick={() => set({ status: 'orcamento' })}
+                className={'rounded-xl p-2.5 text-left ring-1 ' + (p.status === 'orcamento' ? 'bg-marca-700 text-white ring-marca-700' : 'bg-white ring-stone-300')}>
+                <span className="block font-bold">Orçamento</span>
+                <span className={'block text-xs ' + (p.status === 'orcamento' ? 'text-marca-100' : 'text-stone-500')}>Só uma proposta de preço. Não mexe no estoque.</span>
+              </button>
+            </div>
+            {gestor && p.status !== 'orcamento' && (
+              <select className="campo mt-2" value={p.status} onChange={(e) => set({ status: e.target.value as Pedido['status'] })}>
+                <option value="pendente">Situação: aguardando confirmação</option>
+                <option value="confirmado">Situação: confirmado</option>
+                <option value="faturado">Situação: faturado</option>
+                <option value="entregue">Situação: entregue</option>
+              </select>
+            )}
+          </div>
+          <Campo rotulo="Desconto no total">
+            <CampoDesconto pct={p.desconto_pct != null} valor={p.desconto_pct != null ? p.desconto_pct : p.desconto}
+              onChange={(pct, v) => set(pct ? { desconto_pct: v, desconto: arred(subtotal * v / 100) } : { desconto_pct: null, desconto: v })} />
+            {p.desconto_pct != null && descontoTotal > 0 && <span className="mt-1 block text-xs text-stone-500">= {brl(descontoTotal)}</span>}
           </Campo>
           <Campo rotulo="Frete (R$)">
             <input type="number" inputMode="decimal" step="0.01" min="0" className="campo" value={p.frete || ''}
@@ -215,7 +236,7 @@ export default function PedidoForm() {
       <div className="fixed inset-x-0 bottom-[calc(4.6rem+env(safe-area-inset-bottom))] z-30 border-t border-stone-200 bg-white p-3 shadow-[0_-4px_12px_rgba(0,0,0,.05)]">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <div className="flex-1">
-            <p className="text-xs text-stone-500">Subtotal {brl(subtotal)}{p.desconto ? ` · desc. ${brl(p.desconto)}` : ''}{p.frete ? ` · frete ${brl(p.frete)}` : ''}</p>
+            <p className="text-xs text-stone-500">Subtotal {brl(subtotal)}{descontoTotal ? ` · desc. ${brl(descontoTotal)}` : ''}{p.frete ? ` · frete ${brl(p.frete)}` : ''}</p>
             <p className="text-xl font-extrabold text-marca-700">{brl(total)}</p>
           </div>
           <button className="btn-primario px-6" onClick={() => void salvar()}><Icone nome="ok" /> Salvar</button>
@@ -266,14 +287,13 @@ function EscolherProduto({ aberta, onFechar, onEscolher, estoque, precoDe }: {
 }) {
   const [q, setQ] = useState('')
   const lista = useLiveQuery(async () => {
-    const t = normalizar(q)
-    const todos = await db.produtos.filter((p) => p.ativo).toArray()
-    return todos.filter((p) => !t || normalizar(`${p.codigo} ${p.nome} ${p.marca} ${p.gtin}`).includes(t))
-      .sort((a, b) => a.nome.localeCompare(b.nome)).slice(0, 80)
+    const todos = (await db.produtos.filter((p) => p.ativo).toArray()).sort((a, b) => a.nome.localeCompare(b.nome))
+    return filtrarProdutos(todos, q).slice(0, 80)
   }, [q]) ?? []
   return (
     <Folha aberta={aberta} onFechar={onFechar} titulo="Adicionar produto">
-      <Busca valor={q} onChange={setQ} placeholder="Nome, código ou código de barras" />
+      <Busca valor={q} onChange={setQ} autoFocus onEnter={() => { if (lista[0]) { onEscolher(lista[0]); setQ('') } }}
+        placeholder="Código (ex.: 002) ou nome do produto" />
       <ul className="mt-2 divide-y divide-stone-100">
         {lista.map((p) => {
           const saldo = estoque.get(p.id)?.saldo ?? 0
@@ -305,10 +325,11 @@ function EditarItem({ item, gestor, saldo, onFechar, onSalvar }: {
   const produto = useLiveQuery(() => db.produtos.get(item.produto_id), [item.produto_id])
   const [qtd, setQtd] = useState(String(item.quantidade))
   const [preco, setPreco] = useState(String(item.preco_unitario))
-  const [desc, setDesc] = useState(item.desconto ? String(item.desconto) : '')
+  const [desc, setDesc] = useState(item.desconto || 0)
+  const [descPct, setDescPct] = useState(false)
   const q = Number(qtd.replace(',', '.')) || 0
   const pr = Number(preco.replace(',', '.')) || 0
-  const d = Number(desc.replace(',', '.')) || 0
+  const d = descPct ? arred(q * pr * desc / 100) : desc
   const totalItem = arred(q * pr - d)
   const minimo = produto?.preco_minimo ?? null
   const precoEfetivo = q ? (q * pr - d) / q : pr
@@ -328,7 +349,10 @@ function EditarItem({ item, gestor, saldo, onFechar, onSalvar }: {
         </Campo>
         <div className="grid grid-cols-2 gap-3">
           <Campo rotulo="Preço unitário"><input className="campo" inputMode="decimal" value={preco} onChange={(e) => setPreco(e.target.value)} /></Campo>
-          <Campo rotulo="Desconto no item (R$)"><input className="campo" inputMode="decimal" value={desc} onChange={(e) => setDesc(e.target.value)} /></Campo>
+          <Campo rotulo="Desconto no item">
+            <CampoDesconto pct={descPct} valor={desc} onChange={(pct, v) => { setDescPct(pct); setDesc(v) }} />
+            {descPct && d > 0 && <span className="mt-1 block text-xs text-stone-500">= {brl(d)}</span>}
+          </Campo>
         </div>
         {saldo !== undefined && q > saldo && <Aviso tipo="alerta">Quantidade maior que o estoque. O pedido será aceito, mas o gestor verá o alerta.</Aviso>}
         {abaixoMinimo && <Aviso tipo={gestor ? 'alerta' : 'erro'}>Abaixo do preço mínimo ({brl(minimo)}).{gestor ? '' : ' Fale com o gestor.'}</Aviso>}
@@ -342,5 +366,22 @@ function EditarItem({ item, gestor, saldo, onFechar, onSalvar }: {
         </button>
       </div>
     </Folha>
+  )
+}
+
+// Desconto em R$ ou %: o botão ao lado troca o modo (trocar zera o valor).
+function CampoDesconto({ pct, valor, onChange }: { pct: boolean; valor: number; onChange: (pct: boolean, valor: number) => void }) {
+  const [texto, setTexto] = useState(valor ? String(valor).replace('.', ',') : '')
+  return (
+    <div className="flex gap-1">
+      <input className="campo min-w-0" inputMode="decimal" placeholder="0" value={texto}
+        onChange={(e) => { setTexto(e.target.value); onChange(pct, Math.max(0, Number(e.target.value.replace(',', '.')) || 0)) }} />
+      <div className="flex shrink-0 overflow-hidden rounded-xl ring-1 ring-stone-300">
+        {([false, true] as const).map((m) => (
+          <button key={String(m)} type="button" onClick={() => { if (m !== pct) { setTexto(''); onChange(m, 0) } }}
+            className={'w-10 text-sm font-bold ' + (pct === m ? 'bg-marca-700 text-white' : 'bg-white text-stone-600')}>{m ? '%' : 'R$'}</button>
+        ))}
+      </div>
+    </div>
   )
 }

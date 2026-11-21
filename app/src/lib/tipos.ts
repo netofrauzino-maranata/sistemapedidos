@@ -38,7 +38,7 @@ export interface Empresa {
 
 export interface Categoria { id: string; nome: string; ordem: number; ativo: boolean; atualizado_em: string }
 export interface CondicaoPagamento { id: string; nome: string; parcelas_dias: number[]; ativo: boolean; atualizado_em: string }
-export interface FormaPagamento { id: string; nome: string; codigo_nfe: string | null; ativo: boolean; atualizado_em: string }
+export interface FormaPagamento { id: string; nome: string; codigo_nfe: string | null; ativo: boolean; conta_como_venda?: boolean; atualizado_em: string }
 export interface Fornecedor { id: string; nome: string; cpf_cnpj: string | null; telefone: string | null; cidade: string | null; uf: string | null; ativo: boolean; atualizado_em: string }
 
 export interface Produto {
@@ -150,6 +150,7 @@ export interface Pedido {
   itens: ItemPedido[]
   _sync: SyncStatus
   _erro?: string
+  desconto_pct?: number | null // só no celular: desconto digitado em %
 }
 
 export const STATUS_LABEL: Record<StatusPedido, string> = {

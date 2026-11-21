@@ -4,6 +4,7 @@ import { brl, data, dataHora, docFormatado, foneFormatado, num } from './formato
 import type { Categoria, Cliente, CondicaoPagamento, Empresa, FormaPagamento, Pedido, Perfil, Produto } from './tipos'
 import { STATUS_LABEL } from './tipos'
 import logoPdf from '../assets/logo-pdf.jpg?inline'
+import { modulosEan } from './codigobarras'
 
 // PDFs gerados no próprio celular (funciona offline).
 const AZUL: [number, number, number] = [0, 38, 139]
@@ -59,9 +60,10 @@ export interface DadosPedidoPdf {
   empresa?: Empresa | null
   condicao?: CondicaoPagamento | null
   forma?: FormaPagamento | null
+  gtins?: Map<string, string | null> // produto_id -> código de barras
 }
 
-export function pdfPedido({ pedido: p, cliente: c, vendedor, empresa, condicao, forma }: DadosPedidoPdf) {
+export function pdfPedido({ pedido: p, cliente: c, vendedor, empresa, condicao, forma, gtins }: DadosPedidoPdf) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const w = doc.internal.pageSize.getWidth()
   const titulo = p.status === 'orcamento' ? 'ORÇAMENTO' : 'PEDIDO DE VENDA'
@@ -96,28 +98,38 @@ export function pdfPedido({ pedido: p, cliente: c, vendedor, empresa, condicao, 
 
   autoTable(doc, {
     startY: y,
-    head: [['#', 'Código', 'Produto', 'Un', 'Qtd', 'Preço', 'Desc.', 'Total']],
+    head: [['#', 'Código', 'Produto', 'Código de barras', 'Un', 'Qtd', 'Preço', 'Desc.', 'Total']],
     body: p.itens.map((i, n) => [
-      n + 1, i.produto_codigo ?? '', i.produto_nome ?? '', i.unidade ?? '', num(i.quantidade),
+      n + 1, i.produto_codigo ?? '', i.produto_nome ?? '', gtins?.get(i.produto_id) ?? '', i.unidade ?? '', num(i.quantidade),
       brl(i.preco_unitario), i.desconto ? brl(i.desconto) : '', brl(i.total),
     ]),
     theme: 'striped',
     headStyles: { fillColor: AZUL, fontSize: 8 },
-    bodyStyles: { fontSize: 8 },
-    alternateRowStyles: { fillColor: [244, 248, 245] },
+    bodyStyles: { fontSize: 8, minCellHeight: 13, valign: 'middle' },
+    alternateRowStyles: { fillColor: [243, 246, 252] },
     columnStyles: {
-      0: { cellWidth: 7, halign: 'center' }, 1: { cellWidth: 18 }, 3: { cellWidth: 10, halign: 'center' },
-      4: { halign: 'right', cellWidth: 14 }, 5: { halign: 'right', cellWidth: 22 }, 6: { halign: 'right', cellWidth: 18 },
-      7: { halign: 'right', cellWidth: 24, fontStyle: 'bold' },
+      0: { cellWidth: 6, halign: 'center' }, 1: { cellWidth: 13 }, 3: { cellWidth: 34, fontSize: 6.5, halign: 'center', valign: 'bottom', cellPadding: { top: 1, bottom: 0.8, left: 1, right: 1 } },
+      4: { cellWidth: 9, halign: 'center' }, 5: { halign: 'right', cellWidth: 11 }, 6: { halign: 'right', cellWidth: 19 },
+      7: { halign: 'right', cellWidth: 16 }, 8: { halign: 'right', cellWidth: 21, fontStyle: 'bold' },
     },
     margin: { left: 10, right: 10 },
+    // desenha as barras em cima do número
+    didDrawCell: (d) => {
+      if (d.section !== 'body' || d.column.index !== 3) return
+      const mod = modulosEan(String(d.cell.raw ?? ''))
+      if (!mod) return
+      const larg = d.cell.width - 4, x0 = d.cell.x + 2, mw = larg / mod.length
+      const alt = d.cell.height - 6.5
+      doc.setFillColor(0, 0, 0)
+      for (let k = 0; k < mod.length; k++) if (mod[k] === '1') doc.rect(x0 + k * mw, d.cell.y + 1, mw, alt, 'F')
+    },
   })
 
   // totais
   let ty = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6
   if (ty > doc.internal.pageSize.getHeight() - 50) { doc.addPage(); ty = 20 }
   const linhas: [string, string][] = [['Subtotal', brl(p.subtotal)]]
-  if (p.desconto) linhas.push(['Desconto', '− ' + brl(p.desconto)])
+  if (p.desconto) linhas.push(['Desconto', '- ' + brl(p.desconto)])
   if (p.frete) linhas.push(['Frete', brl(p.frete)])
   doc.setFontSize(9)
   linhas.forEach(([a, b], i) => { doc.text(a, w - 60, ty + i * 5); doc.text(b, w - 10, ty + i * 5, { align: 'right' }) })

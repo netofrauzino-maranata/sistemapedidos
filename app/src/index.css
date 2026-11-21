@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 @theme {
-  /* Azul da logo Maranata, com amarelo e vermelho de apoio */
-  --color-marca-50: #EEF2FC;
-  --color-marca-100: #DBE3F8;
-  --color-marca-200: #B4C4EF;
-  --color-marca-500: #2450C4;
-  --color-marca-600: #1238A6;
-  --color-marca-700: #00268B;
-  --color-marca-800: #001A66;
+  /* Azul do app: mais claro que o azul da logo (#00268B), para a logo se destacar */
+  --color-marca-50: #EFF5FF;
+  --color-marca-100: #DCE8FD;
+  --color-marca-200: #B9D1FA;
+  --color-marca-500: #3B7BE8;
+  --color-marca-600: #2A6AD9;
+  --color-marca-700: #1E5BC6;
+  --color-marca-800: #184A9F;
   --color-destaque: #FFD200;
   --color-apoio: #E30613;
   --color-fundo: #F4F6FB;

@@ -5,7 +5,7 @@ import { BotaoFlutuante, Busca, Cabecalho, Vazio } from '../components/ui'
 import { IndicadorSync } from '../components/Layout'
 import { useAuth } from '../lib/auth'
 import { db } from '../lib/db'
-import { brl, data, normalizar, num } from '../lib/formato'
+import { brl, data, filtrarProdutos, num } from '../lib/formato'
 import { useCategorias, useEstoqueMapa } from '../lib/hooks'
 
 export default function Produtos() {
@@ -15,19 +15,18 @@ export default function Produtos() {
   const categorias = useCategorias()
   const estoque = useEstoqueMapa()
   const lista = useLiveQuery(async () => {
-    const t = normalizar(busca)
-    return (await db.produtos.toArray())
+    const todos = (await db.produtos.toArray())
       .filter((p) => p.ativo || gestor)
       .filter((p) => !cat || p.categoria_id === cat)
-      .filter((p) => !t || normalizar(`${p.codigo} ${p.nome} ${p.marca} ${p.gtin}`).includes(t))
       .sort((a, b) => a.nome.localeCompare(b.nome))
+    return filtrarProdutos(todos, busca)
   }, [busca, cat, gestor]) ?? []
 
   return (
     <>
       <Cabecalho titulo="Produtos" acao={<IndicadorSync />} />
       <div className="space-y-2 p-4 pb-2">
-        <Busca valor={busca} onChange={setBusca} placeholder="Nome, código, marca ou código de barras" />
+        <Busca valor={busca} onChange={setBusca} placeholder="Código (ex.: 002) ou nome do produto" />
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
           <button onClick={() => setCat('')} className={'etiqueta shrink-0 px-3 py-1.5 text-sm ' + (!cat ? 'bg-marca-700 text-white' : 'bg-white text-stone-600 ring-1 ring-stone-200')}>Todas</button>
           {categorias.map((c) => (

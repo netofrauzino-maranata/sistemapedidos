@@ -60,3 +60,17 @@ export const normalizar = (s: string | null | undefined) =>
 export const uuid = () => crypto.randomUUID()
 
 export const arred = (v: number, casas = 2) => Math.round((v + Number.EPSILON) * 10 ** casas) / 10 ** casas
+
+// Busca de produto: só números = código (002, 2) ou código de barras; texto = descrição.
+export function filtrarProdutos<T extends { codigo: string; nome: string; marca?: string | null; gtin?: string | null }>(lista: T[], busca: string): T[] {
+  const b = busca.trim()
+  if (!b) return lista
+  if (/^\d+$/.test(b)) {
+    const n = Number(b)
+    const exato = lista.filter((p) => p.codigo === b || (/^\d+$/.test(p.codigo) && Number(p.codigo) === n) || p.gtin === b)
+    const comeca = lista.filter((p) => !exato.includes(p) && (p.codigo.startsWith(b) || (b.length >= 4 && (p.gtin ?? '').includes(b))))
+    return [...exato, ...comeca]
+  }
+  const termos = normalizar(b).split(/\s+/)
+  return lista.filter((p) => { const t = normalizar(`${p.nome} ${p.marca ?? ''} ${p.codigo}`); return termos.every((x) => t.includes(x)) })
+}
