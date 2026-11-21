@@ -61,8 +61,8 @@ export default function Impressora() {
             </div>
           </>}
           <div className="py-2.5">
-            <Campo rotulo="Texto do rodapé (ex.: PIX: sua chave)">
-              <input className="campo" value={c.rodape} onChange={(e) => set({ rodape: e.target.value })} />
+            <Campo rotulo="Rodapé só da térmica (opcional)">
+              <input className="campo" placeholder="Em branco: usa o rodapé de Mais > Dados da empresa" value={c.rodape} onChange={(e) => set({ rodape: e.target.value })} />
             </Campo>
           </div>
           <Linha rotulo="Avançar linhas após imprimir">

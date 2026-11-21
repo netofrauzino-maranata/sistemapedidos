@@ -169,7 +169,8 @@ export async function montarCupom(d: DadosCupom, cfg: ConfigImpressora): Promise
   c.linha('Situacao: ' + STATUS_LABEL[p.status])
   if (p.observacao) { c.linha(); c.quebrado('Obs: ' + p.observacao) }
   c.linha().linha().centro().linha('_'.repeat(Math.min(colunas, 32))).linha('Assinatura do cliente').centro(false)
-  if (cfg.rodape) { c.linha(); c.centro(); c.quebrado(cfg.rodape); c.centro(false) }
+  const rodape = cfg.rodape || e?.rodape_pedido
+  if (rodape) { c.linha(); c.centro(); c.quebrado(rodape); c.centro(false) }
   if (cfg.qr && !cfg.qrTopo && cfg.qrTexto) { c.linha(); c.qr(cfg.qrTexto) }
   c.centro().linha('Documento sem valor fiscal').centro(false)
   for (let k = 0; k < Math.max(0, cfg.avancar); k++) c.linha()

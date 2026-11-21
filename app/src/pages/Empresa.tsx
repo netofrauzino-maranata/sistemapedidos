@@ -46,7 +46,7 @@ export default function Empresa() {
           <Campo rotulo="Número"><input className="campo" {...txt('numero')} /></Campo>
           <Campo rotulo="Bairro"><input className="campo" {...txt('bairro')} /></Campo>
           <Campo rotulo="Cidade" className="col-span-2"><input className="campo" {...txt('cidade')} /></Campo>
-          <Campo rotulo="Rodapé do pedido" className="col-span-2" dica="Ex.: chave PIX, horário de entrega"><textarea className="campo" rows={2} {...txt('rodape_pedido')} /></Campo>
+          <Campo rotulo="Mensagem do rodapé (PDF e impressora)" className="col-span-2" dica="Ex.: PIX: sua chave, horário de entrega"><textarea className="campo" rows={2} {...txt('rodape_pedido')} /></Campo>
         </section>
         {msg && <Aviso tipo={msg.tipo}>{msg.texto}</Aviso>}
         <button className="btn-primario w-full"><Icone nome="ok" /> Salvar</button>
