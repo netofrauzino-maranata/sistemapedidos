@@ -7,6 +7,8 @@ import { buscarCep, buscarCnpj } from '../lib/consultas'
 import { db } from '../lib/db'
 import { brl, cnpjValido, cpfValido, dataHora, soDigitos, uuid } from '../lib/formato'
 import { useCondicoes, useFormas, usePerfisMapa } from '../lib/hooks'
+import { CHAVE_COPIA, CHAVE_RASCUNHO, repetirPedido } from '../lib/repetir'
+import { supabase } from '../lib/supabase'
 import { sincronizar } from '../lib/sync'
 import { STATUS_COR, STATUS_LABEL, type Cliente } from '../lib/tipos'
 
@@ -40,6 +42,8 @@ export default function ClienteForm() {
   }, [id, gestor, perfil?.id, nav])
 
   const pedidos = useLiveQuery(() => (id ? db.pedidos.where('cliente_id').equals(id).reverse().sortBy('data_pedido') : []), [id]) ?? []
+
+  const ultima = pedidos.find((p) => p.status !== 'cancelado' && p.status !== 'orcamento') ?? pedidos.find((p) => p.status !== 'cancelado')
 
   if (!c) return null
   const set = (p: Partial<Cliente>) => setC({ ...c, ...p })
@@ -87,8 +91,8 @@ export default function ClienteForm() {
     void sincronizar()
     if (params.get('voltar') === 'pedido') {
       try {
-        const r = JSON.parse(localStorage.getItem('maranata-rascunho-pedido') ?? 'null')
-        if (r) localStorage.setItem('maranata-rascunho-pedido', JSON.stringify({ ...r, cliente_id: salvo.id }))
+        const r = JSON.parse(localStorage.getItem(CHAVE_RASCUNHO) ?? 'null')
+        if (r) localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify({ ...r, cliente_id: salvo.id }))
       } catch { /* ignora */ }
       return nav('/pedidos/novo', { replace: true })
     }
@@ -99,11 +103,29 @@ export default function ClienteForm() {
     <>
       <Cabecalho titulo={id ? 'Cliente' : 'Novo cliente'} voltar />
       <form onSubmit={salvar} className="space-y-3 p-4">
+        {id && ultima && (
+          <section className="cartao space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Última venda</p>
+                <Link to={`/pedidos/${ultima.id}`} className="block truncate font-bold text-marca-700">
+                  {ultima.numero ? `#${ultima.numero}` : 'Não enviada'} · {dataHora(ultima.data_pedido)}
+                </Link>
+                <p className="text-xs text-stone-500">{ultima.itens.length} produto(s)</p>
+              </div>
+              <p className="shrink-0 text-lg font-extrabold">{brl(ultima.total)}</p>
+            </div>
+            <button type="button" className="btn-primario w-full" onClick={() => void repetirPedido(ultima).then((ok) => ok && nav('/pedidos/novo'))}>
+              <Icone nome="mais" /> Duplicar esta venda
+            </button>
+          </section>
+        )}
+        {id && <CatalogoOnline c={c} onToken={(t) => setC({ ...c, link_token: t })} />}
         {id && (
-          <Link to="/pedidos/novo" onClick={() => localStorage.setItem('maranata-rascunho-pedido', JSON.stringify({
+          <Link to="/pedidos/novo" onClick={() => { localStorage.removeItem(CHAVE_COPIA); localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify({
             id: uuid(), cliente_id: c.id, status: 'pendente', data_pedido: new Date().toISOString(), data_entrega: null,
             condicao_pagamento_id: c.condicao_pagamento_id, forma_pagamento_id: c.forma_pagamento_id, desconto: 0, frete: 0, observacao: '', itens: [],
-          }))} className="btn w-full bg-destaque text-stone-900"><Icone nome="mais" /> Novo pedido para este cliente</Link>
+          })) }} className="btn w-full bg-destaque text-stone-900"><Icone nome="mais" /> Novo pedido para este cliente</Link>
         )}
 
         <section className="cartao space-y-3">
@@ -219,5 +241,52 @@ export default function ClienteForm() {
         )}
       </form>
     </>
+  )
+}
+
+// Link do catálogo online deste cliente: ele escolhe os itens e manda o pedido.
+function CatalogoOnline({ c, onToken }: { c: Cliente; onToken: (t: string) => void }) {
+  const [token, setToken] = useState(c.link_token ?? '')
+  const [msg, setMsg] = useState('')
+  useEffect(() => {
+    if (token) return
+    void supabase.from('clientes').select('link_token').eq('id', c.id).maybeSingle().then(({ data }) => {
+      const t = (data as { link_token?: string } | null)?.link_token
+      if (t) { setToken(t); void db.clientes.update(c.id, { link_token: t }) }
+    })
+  }, [c.id, token])
+  const link = token ? `${location.origin}/c/${token}` : ''
+  const texto = `Olá! Segue o catálogo da Maranata Distribuidora com os seus preços. Escolha os produtos e as quantidades e toque em Enviar pedido: ${link}`
+  const fone = soDigitos(c.whatsapp || c.telefone).replace(/^55/, '')
+
+  async function enviar() {
+    if (fone) return window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(texto)}`, '_blank')
+    if (navigator.share) { try { await navigator.share({ text: texto }); return } catch { return } }
+    await copiar()
+  }
+  async function copiar() {
+    try { await navigator.clipboard.writeText(link); setMsg('Link copiado.') } catch { setMsg(link) }
+  }
+  async function novo() {
+    if (!confirm('Gerar um link novo? O link antigo para de funcionar.')) return
+    const { data, error } = await supabase.rpc('novo_link_catalogo', { p_cliente: c.id })
+    if (error || !data) return setMsg(error?.message ?? 'Não foi possível gerar. Confira a internet.')
+    setToken(data as string); onToken(data as string); await db.clientes.update(c.id, { link_token: data as string }); setMsg('Link novo gerado.')
+  }
+
+  return (
+    <section className="cartao space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Catálogo online</p>
+      <p className="text-sm text-stone-600">Mande o link e o cliente escolhe os itens com os preços dele. O pedido chega em Mais &gt; Pedidos do catálogo online.</p>
+      {!token ? <p className="text-sm text-stone-500">Precisa de internet para buscar o link.</p> : (
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" className="btn-primario col-span-2" onClick={() => void enviar()}><Icone nome="whatsapp" /> Enviar catálogo{fone ? ' no WhatsApp' : ''}</button>
+          <button type="button" className="btn-secundario" onClick={() => void copiar()}>Copiar link</button>
+          <a className="btn-secundario" href={link} target="_blank" rel="noreferrer">Ver como cliente</a>
+          <button type="button" className="col-span-2 text-xs text-stone-500 underline" onClick={() => void novo()}>Gerar link novo (desativa o antigo)</button>
+        </div>
+      )}
+      {msg && <p className="break-all text-xs text-marca-700">{msg}</p>}
+    </section>
   )
 }

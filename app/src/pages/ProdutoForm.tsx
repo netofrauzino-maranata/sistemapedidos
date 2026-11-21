@@ -16,7 +16,7 @@ function vazio(): Produto {
   return {
     id: uuid(), codigo: '', nome: '', descricao: null, categoria_id: null, marca: null, unidade: 'UN', qtd_embalagem: 1,
     peso_kg: null, gtin: null, ncm: null, cest: null, origem: 0, cfop_padrao: '5102', preco_venda: 0, preco_minimo: null,
-    preco_custo: null, estoque_minimo: 0, controla_validade: true, foto_url: null, mostrar_catalogo: true, ativo: true, atualizado_em: '',
+    preco_custo: null, estoque_minimo: 0, controla_validade: false, foto_url: null, mostrar_catalogo: true, ativo: true, atualizado_em: '',
   }
 }
 

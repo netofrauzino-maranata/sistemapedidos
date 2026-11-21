@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useOnline } from '../components/Layout'
 import { Aviso, Busca, Cabecalho, Campo, Folha, Icone } from '../components/ui'
 import { db } from '../lib/db'
@@ -68,7 +68,6 @@ export default function Entrada() {
     if (!itens.length) return setMsg({ tipo: 'erro', texto: 'Adicione os produtos da entrada.' })
     for (const i of itens) {
       if (n(i.quantidade) <= 0) return setMsg({ tipo: 'erro', texto: `Informe a quantidade de ${i.produto.nome}.` })
-      if (i.produto.controla_validade && !i.data_validade) return setMsg({ tipo: 'erro', texto: `Informe a validade de ${i.produto.nome}.` })
     }
     setEnviando(true)
     const { error } = await supabase.rpc('registrar_entrada', {
@@ -84,12 +83,13 @@ export default function Entrada() {
     setEnviando(false)
     if (error) return setMsg({ tipo: 'erro', texto: error.message })
     await sincronizar()
-    nav('/estoque', { replace: true })
+    nav(`/estoque/entradas?nova=${idEntrada}`, { replace: true })
   }
 
   return (
     <>
-      <Cabecalho titulo="Entrada de mercadoria" voltar />
+      <Cabecalho titulo="Entrada de mercadoria" voltar
+        acao={<Link to="/estoque/entradas" className="rounded-full px-3 py-1.5 text-sm font-semibold hover:bg-white/10">Histórico</Link>} />
       <main className="space-y-3 p-4">
         {!online && <Aviso tipo="alerta">Sem internet. A entrada precisa de conexão para atualizar o estoque de todos.</Aviso>}
         <section className="cartao grid grid-cols-2 gap-3">
@@ -122,7 +122,7 @@ export default function Entrada() {
             <Campo rotulo="Quantidade *"><input className="campo" inputMode="decimal" value={i.quantidade} onChange={(e) => atualizar(i.chave, { quantidade: e.target.value })} /></Campo>
             <Campo rotulo="Custo unitário"><input className="campo" inputMode="decimal" value={i.custo_unitario} onChange={(e) => atualizar(i.chave, { custo_unitario: e.target.value })} /></Campo>
             <Campo rotulo="Lote"><input className="campo" value={i.lote} onChange={(e) => atualizar(i.chave, { lote: e.target.value })} placeholder="Nº do lote" /></Campo>
-            <Campo rotulo={'Validade' + (i.produto.controla_validade ? ' *' : '')}><input type="date" className="campo" value={i.data_validade} onChange={(e) => atualizar(i.chave, { data_validade: e.target.value })} /></Campo>
+            <Campo rotulo="Validade (opcional)"><input type="date" className="campo" value={i.data_validade} onChange={(e) => atualizar(i.chave, { data_validade: e.target.value })} /></Campo>
             <p className="col-span-2 text-right text-sm text-stone-500">Subtotal {brl(n(i.quantidade) * n(i.custo_unitario))}</p>
           </section>
         ))}

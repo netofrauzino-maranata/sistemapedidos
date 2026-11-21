@@ -9,12 +9,16 @@ export default function Mais() {
   const { perfil, gestor, sair } = useAuth()
   const sync = useEstadoSync()
   const itens: [string, string, string, boolean][] = [
+    ['/carga', 'Carga do dia', 'caminhao', true],
     ['/estoque', 'Estoque e validades', 'estoque', true],
     ['/estoque/entrada', 'Entrada de mercadoria', 'entrada', true],
+    ['/estoque/entradas', 'Histórico de entradas', 'livro', true],
+    ['/catalogo-pedidos', 'Pedidos do catálogo online', 'pedido', false],
     ['/catalogo', 'Catálogo em PDF', 'livro', false],
     ['/config/impressora', 'Impressora Bluetooth', 'impressora', false],
     ['/relatorios', 'Relatórios', 'grafico', false],
     ['/exportar-nfe', 'Exportar vendas para NF-e', 'exportar', true],
+    ['/config/categorias', 'Categorias de produtos', 'caixa', true],
     ['/config/tabelas', 'Tabelas de preço', 'preco', true],
     ['/config/empresa', 'Dados da empresa', 'empresa', true],
     ['/config/usuarios', 'Usuários e vendedores', 'usuarios', true],
