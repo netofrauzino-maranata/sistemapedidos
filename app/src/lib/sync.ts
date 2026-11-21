@@ -187,6 +187,8 @@ export function sincronizar(): Promise<void> {
       await baixarTabela('condicoes_pagamento', db.condicoes)
       await baixarTabela('formas_pagamento', db.formas)
       await baixarTabela('produtos', db.produtos)
+      await baixarTabela('tabelas_preco', db.tabelasPreco)
+      await baixarTabela('tabela_preco_itens', db.tabelaItens)
       await baixarTabela('lotes', db.lotes)
       await baixarTabela('clientes', db.clientes, async (c) => {
         const local = await db.clientes.get((c as Cliente).id)

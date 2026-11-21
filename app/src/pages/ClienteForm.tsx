@@ -28,6 +28,7 @@ export default function ClienteForm() {
   const { perfil, gestor } = useAuth()
   const condicoes = useCondicoes()
   const formas = useFormas()
+  const tabelas = useLiveQuery(async () => (await db.tabelasPreco.toArray()).filter((t) => t.ativo).sort((a, b) => a.nome.localeCompare(b.nome)), []) ?? []
   const perfis = usePerfisMapa()
   const [c, setC] = useState<Cliente | null>(null)
   const [msg, setMsg] = useState<{ tipo: 'erro' | 'ok' | 'info'; texto: string } | null>(null)
@@ -168,6 +169,11 @@ export default function ClienteForm() {
           </Campo>
           {gestor && (
             <>
+              <Campo rotulo="Tabela de preço" className="col-span-2">
+                <select className="campo" value={c.tabela_preco_id ?? ''} onChange={(e) => set({ tabela_preco_id: e.target.value || null })}>
+                  <option value="">Preço normal</option>{tabelas.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
+                </select>
+              </Campo>
               <Campo rotulo="Vendedor responsável">
                 <select className="campo" value={c.vendedor_id ?? ''} onChange={(e) => set({ vendedor_id: e.target.value || null })}>
                   <option value="">Todos os vendedores</option>

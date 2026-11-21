@@ -104,6 +104,7 @@ export interface Cliente {
   vendedor_id: string | null
   condicao_pagamento_id: string | null
   forma_pagamento_id: string | null
+  tabela_preco_id?: string | null
   limite_credito: number | null
   observacao: string | null
   ativo: boolean
@@ -170,3 +171,20 @@ export const STATUS_COR: Record<StatusPedido, string> = {
 }
 
 export const UNIDADES = ['UN', 'CX', 'FD', 'PCT', 'KG', 'G', 'LT', 'ML', 'DZ', 'SC', 'BD', 'GF']
+
+// Tabela de preço: guarda só os produtos com preço diferente do normal.
+export interface TabelaPreco {
+  id: string
+  codigo: string | null
+  nome: string
+  ativo: boolean
+  atualizado_em?: string
+}
+export interface TabelaPrecoItem {
+  id: string
+  tabela_id: string
+  produto_id: string
+  preco: number
+  ativo: boolean
+  atualizado_em?: string
+}

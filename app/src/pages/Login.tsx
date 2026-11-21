@@ -5,12 +5,10 @@ import { Aviso, Campo } from '../components/ui'
 
 function Marca() {
   return (
-    <div className="mb-8 flex flex-col items-center gap-3 text-center">
-      <img src="/favicon.svg" alt="" className="h-20 w-20 rounded-3xl shadow-lg" />
-      <div>
-        <h1 className="text-2xl font-extrabold text-marca-700">Maranata</h1>
-        <p className="text-sm font-medium tracking-wide text-stone-500">DISTRIBUIDORA · PEDIDOS</p>
-      </div>
+    <div className="mb-6 flex flex-col items-center text-center">
+      <img src="/mascote.png" alt="Mascote Maranata" className="-mb-6 h-40 w-auto drop-shadow-md" />
+      <img src="/logo.png" alt="Maranata Distribuidora" className="relative w-64 max-w-full drop-shadow" />
+      <p className="mt-2 text-xs font-bold tracking-[0.25em] text-marca-700">APP DE PEDIDOS</p>
     </div>
   )
 }
@@ -45,7 +43,7 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center p-6">
+    <div className="flex min-h-full items-center justify-center bg-gradient-to-b from-marca-50 to-fundo p-6">
       <form onSubmit={enviar} className="w-full max-w-sm space-y-4">
         <Marca />
         {modo === 'criar' && (

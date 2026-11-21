@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Aviso, Busca, Cabecalho, Campo, Folha, Icone, Vazio } from '../components/ui'
 import { useAuth } from '../lib/auth'
-import { db } from '../lib/db'
+import { db, mapaPrecos } from '../lib/db'
 import { arred, brl, docFormatado, normalizar, num, uuid } from '../lib/formato'
 import { nomeCliente, useCondicoes, useEstoqueMapa, useFormas } from '../lib/hooks'
 import { sincronizar } from '../lib/sync'
@@ -57,27 +57,44 @@ export default function PedidoForm() {
   }, [p, id])
 
   const cliente = useLiveQuery(() => (p?.cliente_id ? db.clientes.get(p.cliente_id) : undefined), [p?.cliente_id])
+  const precosTabela = useLiveQuery(() => mapaPrecos(cliente?.tabela_preco_id), [cliente?.tabela_preco_id])
+  const nomeTabela = useLiveQuery(async () => (cliente?.tabela_preco_id ? (await db.tabelasPreco.get(cliente.tabela_preco_id))?.nome : undefined), [cliente?.tabela_preco_id])
   const subtotal = useMemo(() => arred((p?.itens ?? []).reduce((s, i) => s + i.total, 0)), [p?.itens])
   const total = arred(subtotal - (p?.desconto ?? 0) + (p?.frete ?? 0))
 
   if (!p) return null
   const set = (parcial: Partial<Rascunho>) => setP({ ...p, ...parcial })
 
-  function escolheCliente(c: Cliente) {
+  const precoDe = (prod: Produto) => precosTabela?.get(prod.id) ?? prod.preco_venda
+
+  async function escolheCliente(c: Cliente) {
+    setEscolherCliente(false)
+    // troca de cliente: itens que estavam no preço da tabela antiga passam para a tabela nova
+    const antigos = precosTabela ?? new Map<string, number>()
+    const novos = await mapaPrecos(c.tabela_preco_id)
+    const produtos = new Map((await db.produtos.bulkGet(p!.itens.map((i) => i.produto_id))).filter(Boolean).map((x) => [x!.id, x!]))
+    const itens = p!.itens.map((i) => {
+      const prod = produtos.get(i.produto_id)
+      if (!prod) return i
+      const precoAntigo = antigos.get(prod.id) ?? prod.preco_venda
+      if (Math.abs(i.preco_unitario - precoAntigo) > 0.001) return i // preço mexido à mão: mantém
+      const preco = novos.get(prod.id) ?? prod.preco_venda
+      return { ...i, preco_unitario: preco, total: arred(i.quantidade * preco - i.desconto) }
+    })
     set({
       cliente_id: c.id,
       condicao_pagamento_id: c.condicao_pagamento_id ?? p!.condicao_pagamento_id,
       forma_pagamento_id: c.forma_pagamento_id ?? p!.forma_pagamento_id,
+      itens,
     })
-    setEscolherCliente(false)
   }
 
   function escolheProduto(prod: Produto) {
     setEscolherProduto(false)
     const existente = p!.itens.find((i) => i.produto_id === prod.id)
     setEditandoItem(existente ?? {
-      id: uuid(), produto_id: prod.id, quantidade: 1, preco_unitario: prod.preco_venda, desconto: 0,
-      total: prod.preco_venda, produto_nome: prod.nome, produto_codigo: prod.codigo, unidade: prod.unidade,
+      id: uuid(), produto_id: prod.id, quantidade: 1, preco_unitario: precoDe(prod), desconto: 0,
+      total: precoDe(prod), produto_nome: prod.nome, produto_codigo: prod.codigo, unidade: prod.unidade,
     })
   }
 
@@ -122,6 +139,7 @@ export default function PedidoForm() {
             <span className="min-w-0 flex-1">
               <span className="block truncate font-bold">{nomeCliente(cliente)}</span>
               <span className="block truncate text-xs text-stone-500">{docFormatado(cliente.cpf_cnpj)} · {cliente.cidade}</span>
+              {nomeTabela && <span className="etiqueta mt-0.5 bg-destaque/30 text-marca-800">Tabela {nomeTabela}</span>}
             </span>
           ) : <span className="flex-1 font-semibold text-marca-700">Escolher cliente</span>}
           <Icone nome="editar" className="h-4 w-4 text-stone-400" />
@@ -205,7 +223,7 @@ export default function PedidoForm() {
       </div>
 
       <EscolherCliente aberta={escolherCliente} onFechar={() => setEscolherCliente(false)} onEscolher={escolheCliente} />
-      <EscolherProduto aberta={escolherProduto} onFechar={() => setEscolherProduto(false)} onEscolher={escolheProduto} estoque={estoque} />
+      <EscolherProduto aberta={escolherProduto} onFechar={() => setEscolherProduto(false)} onEscolher={escolheProduto} estoque={estoque} precoDe={precoDe} />
       {editandoItem && (
         <EditarItem item={editandoItem} gestor={gestor} saldo={estoque.get(editandoItem.produto_id)?.saldo}
           onFechar={() => setEditandoItem(null)} onSalvar={salvarItem} />
@@ -242,8 +260,9 @@ function EscolherCliente({ aberta, onFechar, onEscolher }: { aberta: boolean; on
   )
 }
 
-function EscolherProduto({ aberta, onFechar, onEscolher, estoque }: {
+function EscolherProduto({ aberta, onFechar, onEscolher, estoque, precoDe }: {
   aberta: boolean; onFechar: () => void; onEscolher: (p: Produto) => void; estoque: Map<string, { saldo: number }>
+  precoDe: (p: Produto) => number
 }) {
   const [q, setQ] = useState('')
   const lista = useLiveQuery(async () => {
@@ -266,7 +285,8 @@ function EscolherProduto({ aberta, onFechar, onEscolher, estoque }: {
                   <p className="text-xs text-stone-500">{p.codigo} · {p.unidade}{p.qtd_embalagem > 1 ? ` c/ ${num(p.qtd_embalagem)}` : ''}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-marca-700">{brl(p.preco_venda)}</p>
+                  <p className="font-bold text-marca-700">{brl(precoDe(p))}</p>
+                  {precoDe(p) !== p.preco_venda && <p className="text-[11px] text-stone-400 line-through">{brl(p.preco_venda)}</p>}
                   <p className={'text-xs ' + (saldo > 0 ? 'text-stone-500' : 'font-semibold text-red-600')}>Estoque {num(saldo)}</p>
                 </div>
               </button>

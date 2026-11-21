@@ -11,16 +11,17 @@ export function Campo({ rotulo, children, dica, className = '' }: { rotulo: stri
   )
 }
 
-export function Cabecalho({ titulo, voltar, acao }: { titulo: string; voltar?: boolean | string; acao?: ReactNode }) {
+export function Cabecalho({ titulo, voltar, acao, logo }: { titulo: string; voltar?: boolean | string; acao?: ReactNode; logo?: boolean }) {
   const nav = useNavigate()
   return (
-    <header className="sticky top-0 z-20 flex items-center gap-2 bg-marca-700 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] text-white shadow">
+    <header className="sticky top-0 z-20 flex items-center gap-2 bg-marca-700 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] text-white shadow border-b-2 border-destaque">
       {voltar && (
         <button aria-label="Voltar" className="-ml-2 rounded-full p-2 hover:bg-white/10"
           onClick={() => (typeof voltar === 'string' ? nav(voltar) : nav(-1))}>
           <Icone nome="voltar" />
         </button>
       )}
+      {logo && <img src="/logo.png" alt="Maranata" className="h-9 w-auto shrink-0" />}
       <h1 className="flex-1 truncate text-lg font-bold">{titulo}</h1>
       {acao}
     </header>
@@ -114,6 +115,7 @@ const caminhos: Record<string, ReactNode> = {
   usuarios: <><circle cx="9" cy="8" r="3.5" /><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5" /><path d="M16 4a3.5 3.5 0 0 1 0 7M22 20c0-3-2-5-5-5.4" /></>,
   sair: <><path d="M9 21H5V3h4" /><path d="M16 17l5-5-5-5M21 12H9" /></>,
   alerta: <><path d="M12 3l10 18H2z" /><path d="M12 10v4M12 18h.01" /></>,
+  preco: <><path d="M20.6 13.4L13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" /><circle cx="7.5" cy="7.5" r="1.5" /></>,
   entrada: <><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" /></>,
 }
 
