@@ -33,6 +33,12 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
+            // fotos padronizadas que vêm com o app (public/produtos)
+            urlPattern: /\/produtos\/[^/]+\.webp$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'fotos-padrao', expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 60 } },
+          },
+          {
             // fotos dos produtos: guarda no celular para ver offline e no catálogo
             urlPattern: /\/storage\/v1\/object\/public\//,
             handler: 'CacheFirst',

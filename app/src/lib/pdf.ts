@@ -206,7 +206,12 @@ export function pdfCatalogo({ produtos, categorias, empresa, mostrarPreco, titul
       const foto = fotos?.get(p.id)
       if (fotos?.size) {
         if (foto) {
-          try { doc.addImage(foto, x + 2, y + 2, cw - 4, 32, undefined, 'FAST') } catch { /* imagem inválida */ }
+          try {
+            // mantém a proporção da foto, centralizada no espaço do cartão
+            const ip = doc.getImageProperties(foto), bw = cw - 4, bh = 32
+            const k = Math.min(bw / ip.width, bh / ip.height), iw = ip.width * k, ih = ip.height * k
+            doc.addImage(foto, x + 2 + (bw - iw) / 2, y + 2 + (bh - ih) / 2, iw, ih, undefined, 'FAST')
+          } catch { /* imagem inválida */ }
         } else {
           doc.setFillColor(244, 248, 245); doc.rect(x + 2, y + 2, cw - 4, 32, 'F')
         }
