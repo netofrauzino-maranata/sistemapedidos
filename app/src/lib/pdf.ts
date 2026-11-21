@@ -351,6 +351,7 @@ export interface OpcoesRelatorio {
   larguras?: Record<number, number>
   totais?: [string, string][]
   nota?: string
+  info?: [string, string][] // bloco de dados (rótulo: valor) antes da tabela
 }
 
 export function pdfRelatorio(o: OpcoesRelatorio) {
@@ -362,8 +363,22 @@ export function pdfRelatorio(o: OpcoesRelatorio) {
   const colunas: Record<number, { halign?: 'right'; cellWidth?: number }> = {}
   o.direita?.forEach((c) => (colunas[c] = { ...colunas[c], halign: 'right' }))
   Object.entries(o.larguras ?? {}).forEach(([c, v]) => (colunas[Number(c)] = { ...colunas[Number(c)], cellWidth: v }))
+  let inicio = 33
+  if (o.info?.length) {
+    const col = (w - 20) / 2
+    doc.setFontSize(8.5)
+    o.info.forEach(([rot, val], k) => {
+      const x = 10 + (k % 2) * col, yy = 35 + Math.floor(k / 2) * 5.2
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(90, 90, 90); doc.text(rot + ':', x, yy)
+      const lw = doc.getTextWidth(rot + ':') + 1.5
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30)
+      doc.text(doc.splitTextToSize(String(val || '-'), col - lw - 3)[0], x + lw, yy)
+    })
+    inicio = 35 + Math.ceil(o.info.length / 2) * 5.2 + 2
+    doc.setDrawColor(220, 220, 220); doc.line(10, inicio - 2, w - 10, inicio - 2)
+  }
   autoTable(doc, {
-    startY: 33, head: [o.cabecalho], body,
+    startY: inicio, head: [o.cabecalho], body,
     theme: 'striped',
     headStyles: { fillColor: AZUL, fontSize: 8.5 },
     bodyStyles: { fontSize: 8.5 },

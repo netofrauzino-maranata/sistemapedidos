@@ -9,13 +9,14 @@ import { brl, data, hojeISO, num } from '../lib/formato'
 import { nomeCliente, useEmpresa } from '../lib/hooks'
 import { pdfRelatorio, type LinhaRelatorio, type OpcoesRelatorio } from '../lib/pdf'
 import { STATUS_LABEL, type StatusPedido } from '../lib/tipos'
+import { RelClientes, RelFornecedores } from './RelatoriosCadastro'
 import { BotoesPdf, MovEstoque, NecessidadeCompra, RelatorioEstoque, VendasCategoria } from './RelatoriosExtras'
 
 // Relatórios no modelo do sistema antigo: uma lista; cada um abre com filtro
 // de período e vendedor e gera PDF. Calculado com os dados do aparelho.
 
 type Rel = 'vendas' | 'produtos_detalhe' | 'produtos_resumo' | 'categoria' | 'compra' | 'movimento' | 'estoque' | 'zerados'
-  | 'vendedor' | 'cliente' | 'positivacao'
+  | 'vendedor' | 'cliente' | 'positivacao' | 'clientes' | 'fornecedores'
 
 interface ItemMenu { id: Rel; nome: string; desc: string; icone: string; gestor?: boolean; periodo: boolean }
 const MENU: { titulo: string; itens: ItemMenu[] }[] = [
@@ -27,6 +28,10 @@ const MENU: { titulo: string; itens: ItemMenu[] }[] = [
     { id: 'vendedor', nome: 'Vendas por vendedor', desc: 'Total de cada vendedor', icone: 'usuarios', gestor: true, periodo: true },
     { id: 'cliente', nome: 'Vendas por cliente', desc: 'Quem mais comprou', icone: 'cliente', periodo: true },
     { id: 'positivacao', nome: 'Clientes sem compra', desc: 'Positivação da carteira', icone: 'alerta', periodo: true },
+  ] },
+  { titulo: 'Clientes e fornecedores', itens: [
+    { id: 'clientes', nome: 'Relatório de clientes', desc: 'Cadastro e compras de cada cliente', icone: 'cliente', periodo: true },
+    { id: 'fornecedores', nome: 'Relatório de fornecedores', desc: 'Cadastro e entradas de cada fornecedor', icone: 'empresa', gestor: true, periodo: true },
   ] },
   { titulo: 'Estoque e compras', itens: [
     { id: 'compra', nome: 'Necessidade de compra', desc: 'Quanto comprar com base na venda', icone: 'entrada', gestor: true, periodo: false },
@@ -231,7 +236,7 @@ function Relatorio({ item }: { item: ItemMenu }) {
             <div className="grid grid-cols-2 gap-3">
               <Campo rotulo="De"><input type="date" className="campo" value={ini} onChange={(e) => { if (e.target.value) { setIni(e.target.value); setAtalho('') } }} /></Campo>
               <Campo rotulo="Até"><input type="date" className="campo" value={fim} onChange={(e) => { if (e.target.value) { setFim(e.target.value); setAtalho('') } }} /></Campo>
-              {gestor && rel !== 'movimento' && (
+              {gestor && rel !== 'movimento' && rel !== 'fornecedores' && (
                 <Campo rotulo="Vendedor" className="col-span-2">
                   <select className="campo" value={vendedor} onChange={(e) => setVendedor(e.target.value)}>
                     <option value="">Todos</option>{r?.perfis.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
@@ -239,7 +244,7 @@ function Relatorio({ item }: { item: ItemMenu }) {
                 </Campo>
               )}
             </div>
-            {rel !== 'movimento' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={incluirOrc} onChange={(e) => setIncluirOrc(e.target.checked)} /> Incluir orçamentos</label>}
+            {!['movimento', 'clientes', 'fornecedores'].includes(rel) && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={incluirOrc} onChange={(e) => setIncluirOrc(e.target.checked)} /> Incluir orçamentos</label>}
           </section>
         )}
 
@@ -247,6 +252,8 @@ function Relatorio({ item }: { item: ItemMenu }) {
         {rel === 'compra' && <NecessidadeCompra />}
         {rel === 'movimento' && <MovEstoque ini={ini} fim={fim} periodo={textoPeriodo} />}
         {rel === 'estoque' && <RelatorioEstoque />}
+        {rel === 'clientes' && <RelClientes ini={ini} fim={fim} periodo={textoPeriodo} vendedor={vendedor} />}
+        {rel === 'fornecedores' && <RelFornecedores ini={ini} fim={fim} periodo={textoPeriodo} />}
         {rel === 'zerados' && <RelatorioEstoque inicial="zerados" />}
 
         {r && temTabela && <>
