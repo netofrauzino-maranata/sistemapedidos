@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useParams } from 'react-router-dom'
 import { brl, normalizar, num } from '../lib/formato'
 import { supabase } from '../lib/supabase'
+import { fotoDoProduto } from '../lib/fotos'
 
 // Catálogo online do cliente (página pública, sem login).
 // O link é único de cada cliente: já mostra o preço da tabela dele.
@@ -124,7 +125,7 @@ export default function CatalogoCliente() {
                 return (
                   <article key={p.id} className={'flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ' + (qtd ? 'ring-2 ring-marca-500' : 'ring-stone-200')}>
                     <div className="flex aspect-square items-center justify-center bg-white">
-                      {p.foto_url ? <img src={p.foto_url} alt={p.nome} loading="lazy" className="h-full w-full object-contain" />
+                      {fotoDoProduto(p) ? <img src={fotoDoProduto(p)!} alt={p.nome} loading="lazy" className="h-full w-full object-contain" />
                         : <img src="/logo.png" alt="" className="w-2/3 opacity-20" />}
                     </div>
                     <div className="flex flex-1 flex-col gap-1 p-2.5">
