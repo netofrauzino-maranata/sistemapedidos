@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useOnline } from '../components/Layout'
 import { Aviso, Busca, Cabecalho, Campo, Folha, Icone } from '../components/ui'
 import { db } from '../lib/db'
@@ -84,12 +84,13 @@ export default function Entrada() {
     setEnviando(false)
     if (error) return setMsg({ tipo: 'erro', texto: error.message })
     await sincronizar()
-    nav('/estoque', { replace: true })
+    nav(`/estoque/entradas?nova=${idEntrada}`, { replace: true })
   }
 
   return (
     <>
-      <Cabecalho titulo="Entrada de mercadoria" voltar />
+      <Cabecalho titulo="Entrada de mercadoria" voltar
+        acao={<Link to="/estoque/entradas" className="rounded-full px-3 py-1.5 text-sm font-semibold hover:bg-white/10">Histórico</Link>} />
       <main className="space-y-3 p-4">
         {!online && <Aviso tipo="alerta">Sem internet. A entrada precisa de conexão para atualizar o estoque de todos.</Aviso>}
         <section className="cartao grid grid-cols-2 gap-3">

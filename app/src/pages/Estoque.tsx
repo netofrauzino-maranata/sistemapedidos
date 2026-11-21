@@ -38,7 +38,7 @@ export default function Estoque() {
 
   return (
     <>
-      <Cabecalho titulo="Estoque" voltar="/mais" acao={<Link to="/estoque/entrada" className="btn bg-destaque px-3 py-1.5 text-sm text-stone-900"><Icone nome="entrada" className="h-4 w-4" /> Entrada</Link>} />
+      <Cabecalho titulo="Estoque" voltar="/mais" acao={<div className="flex items-center gap-1"><Link to="/estoque/entradas" className="rounded-full p-2 hover:bg-white/10" aria-label="Histórico de entradas"><Icone nome="livro" /></Link><Link to="/estoque/entrada" className="btn bg-destaque px-3 py-1.5 text-sm text-stone-900"><Icone nome="entrada" className="h-4 w-4" /> Entrada</Link></div>} />
       <div className="space-y-2 p-4 pb-2">
         <div className="cartao flex justify-between p-3 text-sm">
           <span>Valor em estoque (custo)</span><b className="text-marca-700">{brl(dados.valor)}</b>

@@ -12,6 +12,7 @@ export default function Mais() {
     ['/carga', 'Carga do dia', 'caminhao', true],
     ['/estoque', 'Estoque e validades', 'estoque', true],
     ['/estoque/entrada', 'Entrada de mercadoria', 'entrada', true],
+    ['/estoque/entradas', 'Histórico de entradas', 'livro', true],
     ['/catalogo', 'Catálogo em PDF', 'livro', false],
     ['/config/impressora', 'Impressora Bluetooth', 'impressora', false],
     ['/relatorios', 'Relatórios', 'grafico', false],
