@@ -1,16 +1,41 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Cabecalho, Campo, Icone } from '../components/ui'
 import { useAuth } from '../lib/auth'
 import { baixarArquivo, gerarCsv } from '../lib/csv'
-import { db } from '../lib/db'
+import { db, formasForaDeVenda } from '../lib/db'
 import { brl, data, hojeISO, num } from '../lib/formato'
-import { formasForaDeVenda } from '../lib/db'
-import { nomeCliente } from '../lib/hooks'
-import { ItensZerados, SugestaoCompra, VendasCategoria } from './RelatoriosExtras'
+import { nomeCliente, useEmpresa } from '../lib/hooks'
+import { pdfRelatorio, type LinhaRelatorio, type OpcoesRelatorio } from '../lib/pdf'
 import { STATUS_LABEL, type StatusPedido } from '../lib/tipos'
+import { BotoesPdf, MovEstoque, NecessidadeCompra, RelatorioEstoque, VendasCategoria } from './RelatoriosExtras'
 
-type Aba = 'resumo' | 'vendedor' | 'cliente' | 'produto' | 'positivacao' | 'categoria' | 'zerados' | 'compra'
+// Relatórios no modelo do sistema antigo: uma lista; cada um abre com filtro
+// de período e vendedor e gera PDF. Calculado com os dados do aparelho.
+
+type Rel = 'vendas' | 'produtos_detalhe' | 'produtos_resumo' | 'categoria' | 'compra' | 'movimento' | 'estoque' | 'zerados'
+  | 'vendedor' | 'cliente' | 'positivacao'
+
+interface ItemMenu { id: Rel; nome: string; desc: string; icone: string; gestor?: boolean; periodo: boolean }
+const MENU: { titulo: string; itens: ItemMenu[] }[] = [
+  { titulo: 'Vendas', itens: [
+    { id: 'vendas', nome: 'Relatório de vendas', desc: 'Cada venda do período, com totais', icone: 'pedido', periodo: true },
+    { id: 'produtos_detalhe', nome: 'Produtos vendidos (detalhe)', desc: 'Cada produto e para quem vendeu', icone: 'produto', periodo: true },
+    { id: 'produtos_resumo', nome: 'Produtos vendidos (resumo)', desc: 'Quantidade e valor de cada produto', icone: 'caixa', periodo: true },
+    { id: 'categoria', nome: 'Vendas por categoria', desc: 'Biscoito, doce... e os itens de cada grupo', icone: 'grafico', periodo: true },
+    { id: 'vendedor', nome: 'Vendas por vendedor', desc: 'Total de cada vendedor', icone: 'usuarios', gestor: true, periodo: true },
+    { id: 'cliente', nome: 'Vendas por cliente', desc: 'Quem mais comprou', icone: 'cliente', periodo: true },
+    { id: 'positivacao', nome: 'Clientes sem compra', desc: 'Positivação da carteira', icone: 'alerta', periodo: true },
+  ] },
+  { titulo: 'Estoque e compras', itens: [
+    { id: 'compra', nome: 'Necessidade de compra', desc: 'Quanto comprar com base na venda', icone: 'entrada', gestor: true, periodo: false },
+    { id: 'movimento', nome: 'Relatório de mov. estoque', desc: 'Entradas, vendas e ajustes no período', icone: 'sync', gestor: true, periodo: true },
+    { id: 'estoque', nome: 'Relatório de estoque', desc: 'Saldo e valor de cada produto', icone: 'estoque', periodo: false },
+    { id: 'zerados', nome: 'Itens zerados', desc: 'Produtos sem saldo ou negativos', icone: 'alerta', periodo: false },
+  ] },
+]
+const TODOS = MENU.flatMap((g) => g.itens)
 
 function periodo(chave: string): [string, string] {
   const hoje = new Date()
@@ -23,23 +48,63 @@ function periodo(chave: string): [string, string] {
 }
 
 interface Linha { chave: string; nome: string; pedidos: number; quantidade: number; total: number; extra?: string }
+interface Detalhe { pedido: string; data: string; cliente: string; quantidade: number; preco: number; total: number }
 
 export default function Relatorios() {
+  const { gestor } = useAuth()
+  const [params, setParams] = useSearchParams()
+  const rel = params.get('r') as Rel | null
+  const item = TODOS.find((i) => i.id === rel && (!i.gestor || gestor))
+
+  if (!item) {
+    return (
+      <>
+        <Cabecalho titulo="Relatórios" voltar="/mais" />
+        <main className="space-y-4 p-4">
+          {MENU.map((g) => (
+            <section key={g.titulo}>
+              <h2 className="mb-2 px-1 text-xs font-bold uppercase tracking-wide text-stone-500">{g.titulo}</h2>
+              <nav className="cartao divide-y divide-stone-100 p-0">
+                {g.itens.filter((i) => !i.gestor || gestor).map((i) => (
+                  <button key={i.id} onClick={() => setParams({ r: i.id })} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-marca-50 text-marca-700"><Icone nome={i.icone} /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold">{i.nome}</span>
+                      <span className="block text-xs text-stone-500">{i.desc}</span>
+                    </span>
+                    <Icone nome="voltar" className="h-4 w-4 rotate-180 text-stone-400" />
+                  </button>
+                ))}
+              </nav>
+            </section>
+          ))}
+        </main>
+      </>
+    )
+  }
+  return <Relatorio item={item} />
+}
+
+function Relatorio({ item }: { item: ItemMenu }) {
   const { gestor, perfil } = useAuth()
-  const [aba, setAba] = useState<Aba>('resumo')
+  const empresa = useEmpresa()
   const [atalho, setAtalho] = useState('mes')
   const [ini, setIni] = useState(periodo('mes')[0])
   const [fim, setFim] = useState(hojeISO())
   const [vendedor, setVendedor] = useState('')
   const [incluirOrc, setIncluirOrc] = useState(false)
+  const [aberto, setAberto] = useState<string | null>(null)
+  const rel = item.id
+  const textoPeriodo = `${data(ini)} a ${data(fim)}`
 
   function usarAtalho(a: string) { setAtalho(a); const [i, f] = periodo(a); setIni(i); setFim(f) }
 
   const r = useLiveQuery(async () => {
-    const [pedidos, clientes, perfis, produtos] = await Promise.all([db.pedidos.toArray(), db.clientes.toArray(), db.perfis.toArray(), db.produtos.toArray()])
+    const [pedidos, clientes, perfis, produtos, formas] = await Promise.all([db.pedidos.toArray(), db.clientes.toArray(), db.perfis.toArray(), db.produtos.toArray(), db.formas.toArray()])
     const cli = new Map(clientes.map((c) => [c.id, c]))
     const per = new Map(perfis.map((p) => [p.id, p]))
     const prod = new Map(produtos.map((p) => [p.id, p]))
+    const forma = new Map(formas.map((f) => [f.id, f.nome]))
     const dia = (s: string) => new Date(s).toLocaleDateString('en-CA')
     const validos: StatusPedido[] = incluirOrc ? ['orcamento', 'pendente', 'confirmado', 'faturado', 'entregue'] : ['pendente', 'confirmado', 'faturado', 'entregue']
     const foraDeVenda = await formasForaDeVenda()
@@ -49,16 +114,11 @@ export default function Relatorios() {
       if (!gestor && p.vendedor_id !== perfil?.id) return false
       if (vendedor && p.vendedor_id !== vendedor) return false
       return validos.includes(p.status)
-    })
-    // Trocas baixam estoque mas não são venda: ficam fora de todos os totais
+    }).sort((a, b) => a.data_pedido.localeCompare(b.data_pedido))
+    // Trocas baixam estoque mas não são venda: ficam fora dos totais
     const lista = doPeriodo.filter((p) => !foraDeVenda.has(p.forma_pagamento_id ?? ''))
     const trocas = doPeriodo.filter((p) => foraDeVenda.has(p.forma_pagamento_id ?? ''))
     const total = lista.reduce((s, p) => s + p.total, 0)
-    const porDia = new Map<string, number>()
-    lista.forEach((p) => porDia.set(dia(p.data_pedido), (porDia.get(dia(p.data_pedido)) ?? 0) + p.total))
-    const porStatus = new Map<string, { n: number; t: number }>()
-    pedidos.filter((p) => { const d = dia(p.data_pedido); return d >= ini && d <= fim && (gestor || p.vendedor_id === perfil?.id) && (!vendedor || p.vendedor_id === vendedor) && !foraDeVenda.has(p.forma_pagamento_id ?? '') })
-      .forEach((p) => { const x = porStatus.get(p.status) ?? { n: 0, t: 0 }; porStatus.set(p.status, { n: x.n + 1, t: x.t + p.total }) })
 
     const agrupar = (chaveDe: (p: (typeof lista)[0]) => string, nomeDe: (k: string) => string): Linha[] => {
       const m = new Map<string, Linha>()
@@ -70,10 +130,12 @@ export default function Relatorios() {
       })
       return [...m.values()].sort((a, b) => b.total - a.total)
     }
-    const porProduto = new Map<string, Linha>()
+    const porProduto = new Map<string, Linha & { codigo: string; detalhes: Detalhe[] }>()
     lista.forEach((p) => p.itens.forEach((i) => {
-      const l = porProduto.get(i.produto_id) ?? { chave: i.produto_id, nome: prod.get(i.produto_id)?.nome ?? i.produto_nome ?? '?', pedidos: 0, quantidade: 0, total: 0, extra: prod.get(i.produto_id)?.unidade }
+      const pr = prod.get(i.produto_id)
+      const l = porProduto.get(i.produto_id) ?? { chave: i.produto_id, codigo: pr?.codigo ?? i.produto_codigo ?? '', nome: pr?.nome ?? i.produto_nome ?? '?', pedidos: 0, quantidade: 0, total: 0, extra: pr?.unidade ?? i.unidade, detalhes: [] }
       l.pedidos++; l.quantidade += i.quantidade; l.total += i.total
+      l.detalhes.push({ pedido: p.numero ? String(p.numero) : '-', data: p.data_pedido, cliente: nomeCliente(cli.get(p.cliente_id)), quantidade: i.quantidade, preco: i.preco_unitario, total: i.total })
       porProduto.set(i.produto_id, l)
     }))
     const compraram = new Set(lista.map((p) => p.cliente_id))
@@ -89,120 +151,169 @@ export default function Relatorios() {
     })).sort((a, b) => a.nome.localeCompare(b.nome))
 
     return {
+      lista, cli, per, forma,
       trocasQtd: trocas.length, trocasTotal: trocas.reduce((s, p) => s + p.total, 0),
       total, qtd: lista.length, ticket: lista.length ? total / lista.length : 0,
+      volumes: lista.reduce((s, p) => s + p.itens.reduce((t, i) => t + i.quantidade, 0), 0),
       clientesAtendidos: compraram.size, carteira: carteira.length,
-      porDia: [...porDia.entries()].sort(), porStatus,
       vendedor: agrupar((p) => p.vendedor_id, (k) => per.get(k)?.nome ?? '?'),
       cliente: agrupar((p) => p.cliente_id, (k) => nomeCliente(cli.get(k))),
       produto: [...porProduto.values()].sort((a, b) => b.total - a.total),
       positivacao: semCompra,
-      lista,
       perfis,
     }
   }, [ini, fim, vendedor, incluirOrc, gestor, perfil?.id])
 
-  const abas: [Aba, string][] = [['resumo', 'Resumo'], ['categoria', 'Categorias'], ...(gestor ? [['vendedor', 'Vendedores'] as [Aba, string]] : []), ['cliente', 'Clientes'], ['produto', 'Produtos'], ['positivacao', 'Sem compra'], ['zerados', 'Itens zerados'], ...(gestor ? [['compra', 'Sugestão de compra'] as [Aba, string]] : [])]
-  const extra = aba === 'categoria' || aba === 'zerados' || aba === 'compra'
-  const linhas: Linha[] = r && aba !== 'resumo' && !extra ? r[aba] : []
-  const maxDia = Math.max(1, ...(r?.porDia.map(([, v]) => v) ?? [1]))
-
-  function exportar() {
-    if (!r || extra) return
-    const nome = `relatorio-${aba}-${ini}-a-${fim}.csv`
-    if (aba === 'resumo') baixarArquivo(gerarCsv(r.porDia.map(([d, v]) => ({ data: data(d), total: Number(v.toFixed(2)) }))), nome)
-    else baixarArquivo(gerarCsv(linhas.map((l) => ({ nome: l.nome, pedidos: l.pedidos, quantidade: l.quantidade, total: Number(l.total.toFixed(2)), info: l.extra ?? '' }))), nome)
+  // Tabela usada no PDF e na planilha
+  function tabela(): Omit<OpcoesRelatorio, 'empresa'> | null {
+    if (!r) return null
+    const base = { titulo: item.nome, subtitulo: textoPeriodo + (vendedor ? ` · ${r.per.get(vendedor)?.nome ?? ''}` : '') }
+    const totaisVenda: [string, string][] = [['Vendas', String(r.qtd)], ['Clientes', String(r.clientesAtendidos)], ['Volumes', num(r.volumes)], ['Ticket médio', brl(r.ticket)], ['Valor vendido', brl(r.total)]]
+    const notaTroca = r.trocasQtd ? `Trocas no período (fora das vendas): ${r.trocasQtd} · ${brl(r.trocasTotal)}.` : undefined
+    if (rel === 'vendas') return {
+      ...base, cabecalho: ['Nº', 'Data', 'Cliente', 'Vendedor', 'Forma', 'Situação', 'Valor'],
+      linhas: r.lista.map((p) => [p.numero ? String(p.numero) : '-', data(p.data_pedido), nomeCliente(r.cli.get(p.cliente_id)), r.per.get(p.vendedor_id)?.nome ?? '', p.forma_pagamento_id ? r.forma.get(p.forma_pagamento_id) ?? '' : '', STATUS_LABEL[p.status], brl(p.total)]),
+      direita: [6], larguras: { 0: 14, 1: 20, 4: 22, 5: 22, 6: 24 }, totais: totaisVenda, nota: notaTroca,
+    }
+    if (rel === 'produtos_resumo') return {
+      ...base, cabecalho: ['Código', 'Produto', 'Un', 'Qtd', 'Vendas', 'Preço médio', 'Valor'],
+      linhas: r.produto.map((l) => [l.codigo, l.nome, l.extra ?? '', num(l.quantidade), String(l.pedidos), brl(l.quantidade ? l.total / l.quantidade : 0), brl(l.total)]),
+      direita: [3, 4, 5, 6], larguras: { 0: 14, 2: 10, 3: 16, 4: 15, 5: 22, 6: 24 },
+      totais: [['Produtos', String(r.produto.length)], ['Vendas', String(r.qtd)], ['Volumes', num(r.volumes)], ['Valor vendido', brl(r.total)]], nota: notaTroca,
+    }
+    if (rel === 'produtos_detalhe') {
+      const linhas: LinhaRelatorio[] = []
+      for (const l of r.produto) {
+        linhas.push({ grupo: [`${l.codigo} ${l.nome}`, '', '', num(l.quantidade), '', brl(l.total)] })
+        for (const d of l.detalhes) linhas.push([`   ${d.cliente}`, d.pedido, data(d.data), num(d.quantidade), brl(d.preco), brl(d.total)])
+      }
+      return {
+        ...base, cabecalho: ['Produto / cliente', 'Pedido', 'Data', 'Qtd', 'Preço', 'Valor'], linhas,
+        direita: [3, 4, 5], larguras: { 1: 16, 2: 20, 3: 15, 4: 20, 5: 24 },
+        totais: [['Produtos', String(r.produto.length)], ['Vendas', String(r.qtd)], ['Volumes', num(r.volumes)], ['Valor vendido', brl(r.total)]], nota: notaTroca,
+      }
+    }
+    if (rel === 'vendedor' || rel === 'cliente') {
+      const ls = r[rel]
+      return {
+        ...base, cabecalho: [rel === 'vendedor' ? 'Vendedor' : 'Cliente', 'Vendas', 'Volumes', 'Ticket médio', 'Valor', '% venda'],
+        linhas: ls.map((l) => [l.nome, String(l.pedidos), num(l.quantidade), brl(l.total / l.pedidos), brl(l.total), r.total ? `${((l.total / r.total) * 100).toFixed(1).replace('.', ',')}%` : '']),
+        direita: [1, 2, 3, 4, 5], larguras: { 1: 16, 2: 18, 3: 24, 4: 26, 5: 18 }, totais: totaisVenda, nota: notaTroca,
+      }
+    }
+    if (rel === 'positivacao') return {
+      ...base, cabecalho: ['Cliente', 'Situação'], linhas: r.positivacao.map((l) => [l.nome, l.extra ?? '']), larguras: { 1: 50 },
+      totais: [['Carteira', String(r.carteira)], ['Compraram', String(r.clientesAtendidos)], ['Sem compra', String(r.positivacao.length)], ['Positivação', `${r.carteira ? Math.round((r.clientesAtendidos / r.carteira) * 100) : 0}%`]],
+    }
+    return null
   }
+
+  const gerarPdf = () => pdfRelatorio({ empresa, ...tabela()! })
+  function exportarCsv() {
+    const t = tabela(); if (!t) return
+    const linhas = t.linhas.map((l) => Object.fromEntries((Array.isArray(l) ? l : l.grupo).map((v, k) => [t.cabecalho[k], v.trim()])))
+    baixarArquivo(gerarCsv(linhas, t.cabecalho), `${rel}-${ini}-a-${fim}.csv`)
+  }
+  const temTabela = ['vendas', 'produtos_resumo', 'produtos_detalhe', 'vendedor', 'cliente', 'positivacao'].includes(rel)
 
   return (
     <>
-      <Cabecalho titulo="Relatórios" voltar acao={extra ? undefined : <button className="rounded-full p-2 hover:bg-white/10" onClick={exportar} aria-label="Exportar planilha"><Icone nome="exportar" /></button>} />
+      <Cabecalho titulo={item.nome} voltar="/relatorios"
+        acao={temTabela ? <button className="rounded-full p-2 hover:bg-white/10" onClick={exportarCsv} aria-label="Exportar planilha"><Icone nome="exportar" /></button> : undefined} />
       <main className="space-y-3 p-4">
-        <section className="cartao space-y-3">
-          <div className="-mx-1 flex flex-wrap gap-1">
-            {[['hoje', 'Hoje'], ['7d', '7 dias'], ['mes', 'Este mês'], ['mesant', 'Mês passado'], ['ano', 'Ano']].map(([k, n]) => (
-              <button key={k} onClick={() => usarAtalho(k)} className={'etiqueta px-3 py-1.5 text-sm ' + (atalho === k ? 'bg-marca-700 text-white' : 'bg-stone-100 text-stone-600')}>{n}</button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Campo rotulo="De"><input type="date" className="campo" value={ini} onChange={(e) => { setIni(e.target.value); setAtalho('') }} /></Campo>
-            <Campo rotulo="Até"><input type="date" className="campo" value={fim} onChange={(e) => { setFim(e.target.value); setAtalho('') }} /></Campo>
-            {gestor && (
-              <Campo rotulo="Vendedor" className="col-span-2">
-                <select className="campo" value={vendedor} onChange={(e) => setVendedor(e.target.value)}>
-                  <option value="">Todos</option>{r?.perfis.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                </select>
-              </Campo>
-            )}
-          </div>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={incluirOrc} onChange={(e) => setIncluirOrc(e.target.checked)} /> Incluir orçamentos</label>
-        </section>
-
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4">
-          {abas.map(([k, n]) => (
-            <button key={k} onClick={() => setAba(k)} className={'etiqueta shrink-0 px-3 py-1.5 text-sm ' + (aba === k ? 'bg-marca-700 text-white' : 'bg-white text-stone-600 ring-1 ring-stone-200')}>{n}</button>
-          ))}
-        </div>
-
-        {r && aba === 'resumo' && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="cartao"><p className="text-xs text-stone-500">Vendido</p><p className="text-xl font-extrabold text-marca-700">{brl(r.total)}</p></div>
-              <div className="cartao"><p className="text-xs text-stone-500">Pedidos</p><p className="text-xl font-extrabold">{r.qtd}</p></div>
-              <div className="cartao"><p className="text-xs text-stone-500">Ticket médio</p><p className="text-xl font-extrabold">{brl(r.ticket)}</p></div>
-              <div className="cartao"><p className="text-xs text-stone-500">Positivação</p><p className="text-xl font-extrabold">{r.clientesAtendidos}/{r.carteira}</p>
-                <p className="text-xs text-stone-500">{r.carteira ? Math.round((r.clientesAtendidos / r.carteira) * 100) : 0}% da carteira</p></div>
+        {item.periodo && (
+          <section className="cartao space-y-3">
+            <div className="-mx-1 flex flex-wrap gap-1">
+              {[['hoje', 'Hoje'], ['7d', '7 dias'], ['mes', 'Este mês'], ['mesant', 'Mês passado'], ['ano', 'Ano']].map(([k, n]) => (
+                <button key={k} onClick={() => usarAtalho(k)} className={'etiqueta px-3 py-1.5 text-sm ' + (atalho === k ? 'bg-marca-700 text-white' : 'bg-stone-100 text-stone-600')}>{n}</button>
+              ))}
             </div>
-            {r.trocasQtd > 0 && (
-              <p className="cartao text-sm text-stone-600">Trocas no período (fora das vendas): <b>{r.trocasQtd}</b> · {brl(r.trocasTotal)}</p>
-            )}
-            <section className="cartao">
-              <h2 className="mb-2 font-bold">Vendas por dia</h2>
-              {!r.porDia.length && <p className="text-sm text-stone-500">Sem vendas no período.</p>}
-              <ul className="space-y-1.5">
-                {r.porDia.map(([d, v]) => (
-                  <li key={d} className="grid grid-cols-[4.5rem_1fr_6rem] items-center gap-2 text-sm">
-                    <span className="text-stone-500">{data(d).slice(0, 5)}</span>
-                    <span className="h-3 rounded-full bg-marca-500" style={{ width: `${(v / maxDia) * 100}%` }} />
-                    <span className="text-right font-semibold">{brl(v)}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-            <section className="cartao">
-              <h2 className="mb-2 font-bold">Por situação</h2>
-              <ul className="divide-y divide-stone-100 text-sm">
-                {[...r.porStatus.entries()].map(([s, x]) => (
-                  <li key={s} className="flex justify-between py-1.5"><span>{STATUS_LABEL[s as StatusPedido]} ({x.n})</span><b>{brl(x.t)}</b></li>
-                ))}
-              </ul>
-            </section>
-          </>
+            <div className="grid grid-cols-2 gap-3">
+              <Campo rotulo="De"><input type="date" className="campo" value={ini} onChange={(e) => { if (e.target.value) { setIni(e.target.value); setAtalho('') } }} /></Campo>
+              <Campo rotulo="Até"><input type="date" className="campo" value={fim} onChange={(e) => { if (e.target.value) { setFim(e.target.value); setAtalho('') } }} /></Campo>
+              {gestor && rel !== 'movimento' && (
+                <Campo rotulo="Vendedor" className="col-span-2">
+                  <select className="campo" value={vendedor} onChange={(e) => setVendedor(e.target.value)}>
+                    <option value="">Todos</option>{r?.perfis.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                </Campo>
+              )}
+            </div>
+            {rel !== 'movimento' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={incluirOrc} onChange={(e) => setIncluirOrc(e.target.checked)} /> Incluir orçamentos</label>}
+          </section>
         )}
 
-        {r && aba === 'categoria' && <VendasCategoria pedidos={r.lista} periodo={`${data(ini)} a ${data(fim)}`} />}
-        {aba === 'zerados' && <ItensZerados />}
-        {aba === 'compra' && <SugestaoCompra />}
+        {rel === 'categoria' && r && <VendasCategoria pedidos={r.lista} periodo={textoPeriodo} />}
+        {rel === 'compra' && <NecessidadeCompra />}
+        {rel === 'movimento' && <MovEstoque ini={ini} fim={fim} periodo={textoPeriodo} />}
+        {rel === 'estoque' && <RelatorioEstoque />}
+        {rel === 'zerados' && <RelatorioEstoque inicial="zerados" />}
 
-        {r && aba !== 'resumo' && !extra && (
+        {r && temTabela && <>
+          {rel !== 'positivacao' && (
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="cartao p-2"><p className="text-[11px] text-stone-500">Vendas</p><p className="font-bold">{r.qtd}</p></div>
+              <div className="cartao p-2"><p className="text-[11px] text-stone-500">Volumes</p><p className="font-bold">{num(r.volumes)}</p></div>
+              <div className="rounded-xl bg-marca-700 p-2 text-white"><p className="text-[11px] text-marca-100">Vendido</p><p className="truncate font-bold">{brl(r.total)}</p></div>
+            </div>
+          )}
+          {rel === 'positivacao' && (
+            <p className="cartao text-sm">Positivação: <b>{r.clientesAtendidos} de {r.carteira}</b> clientes ({r.carteira ? Math.round((r.clientesAtendidos / r.carteira) * 100) : 0}%)</p>
+          )}
+          {r.trocasQtd > 0 && rel !== 'positivacao' && <p className="text-xs text-stone-500">Trocas no período (fora das vendas): {r.trocasQtd} · {brl(r.trocasTotal)}</p>}
+
           <section className="cartao p-0">
-            {!linhas.length && <p className="p-6 text-center text-sm text-stone-500">{aba === 'positivacao' ? 'Todos os clientes compraram no período.' : 'Sem dados no período.'}</p>}
             <ul className="divide-y divide-stone-100">
-              {linhas.map((l, i) => (
+              {rel === 'vendas' && r.lista.map((p) => (
+                <li key={p.id}>
+                  <Link to={`/pedidos/${p.id}`} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold">{nomeCliente(r.cli.get(p.cliente_id))}</p>
+                      <p className="text-xs text-stone-500">#{p.numero ?? '-'} · {data(p.data_pedido)} · {p.forma_pagamento_id ? r.forma.get(p.forma_pagamento_id) : ''}{gestor ? ` · ${r.per.get(p.vendedor_id)?.nome ?? ''}` : ''}</p>
+                    </div>
+                    <b>{brl(p.total)}</b>
+                  </Link>
+                </li>
+              ))}
+              {(rel === 'produtos_resumo' || rel === 'produtos_detalhe') && r.produto.map((l) => (
+                <li key={l.chave}>
+                  <button className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm" onClick={() => rel === 'produtos_detalhe' && setAberto(aberto === l.chave ? null : l.chave)}>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold"><span className="font-normal text-stone-500">{l.codigo}</span> {l.nome}</p>
+                      <p className="text-xs text-stone-500">{num(l.quantidade)} {(l.extra ?? '').toLowerCase()} em {l.pedidos} venda(s)</p>
+                    </div>
+                    <b>{brl(l.total)}</b>
+                  </button>
+                  {rel === 'produtos_detalhe' && aberto === l.chave && (
+                    <ul className="border-t border-stone-100 bg-stone-50">
+                      {l.detalhes.map((d, k) => (
+                        <li key={k} className="flex items-center gap-3 px-6 py-1.5 text-xs">
+                          <span className="min-w-0 flex-1 truncate">{d.cliente} <span className="text-stone-500">· #{d.pedido} · {data(d.data)}</span></span>
+                          <span>{num(d.quantidade)} x {brl(d.preco)}</span>
+                          <b>{brl(d.total)}</b>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+              {(rel === 'vendedor' || rel === 'cliente' || rel === 'positivacao') && r[rel].map((l, i) => (
                 <li key={l.chave} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                   <span className="w-6 text-right text-xs text-stone-400">{i + 1}</span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold">{l.nome}</p>
-                    <p className="text-xs text-stone-500">
-                      {aba === 'positivacao' ? l.extra : aba === 'produto' ? `${num(l.quantidade)} ${l.extra ?? ''} em ${l.pedidos} pedido(s)` : `${l.pedidos} pedido(s)`}
-                    </p>
+                    <p className="text-xs text-stone-500">{rel === 'positivacao' ? l.extra : `${l.pedidos} venda(s) · ${num(l.quantidade)} vol.`}</p>
                   </div>
-                  {aba !== 'positivacao' && <b>{brl(l.total)}</b>}
+                  {rel !== 'positivacao' && <b>{brl(l.total)}</b>}
                 </li>
               ))}
             </ul>
+            {!(rel === 'vendas' ? r.lista : rel === 'produtos_resumo' || rel === 'produtos_detalhe' ? r.produto : r[rel as 'vendedor']).length && (
+              <p className="p-6 text-center text-sm text-stone-500">{rel === 'positivacao' ? 'Todos os clientes compraram no período.' : 'Sem vendas no período.'}</p>
+            )}
           </section>
-        )}
+          <BotoesPdf gerar={gerarPdf} arquivo={`${rel}-${ini}-a-${fim}.pdf`} />
+        </>}
         <p className="text-center text-xs text-stone-400">Calculado com os dados sincronizados no aparelho.</p>
       </main>
     </>

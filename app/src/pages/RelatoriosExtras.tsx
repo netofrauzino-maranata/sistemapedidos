@@ -1,9 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Icone } from '../components/ui'
 import { db } from '../lib/db'
-import { brl, data, num } from '../lib/formato'
+import { brl, data, dataHora, num } from '../lib/formato'
+import { supabase } from '../lib/supabase'
 import { useEmpresa } from '../lib/hooks'
 import { abrirPdf, compartilharPdf, pdfRelatorio, type LinhaRelatorio } from '../lib/pdf'
 import type { Pedido, Produto } from '../lib/tipos'
@@ -13,7 +14,7 @@ import type { Pedido, Produto } from '../lib/tipos'
 
 const SEM = '__sem__'
 
-function BotoesPdf({ gerar, arquivo }: { gerar: () => ReturnType<typeof pdfRelatorio>; arquivo: string }) {
+export function BotoesPdf({ gerar, arquivo }: { gerar: () => ReturnType<typeof pdfRelatorio>; arquivo: string }) {
   return (
     <div className="grid grid-cols-2 gap-2">
       <button className="btn-secundario" onClick={() => abrirPdf(gerar())}><Icone nome="pdf" /> Ver PDF</button>
@@ -106,10 +107,10 @@ export function VendasCategoria({ pedidos, periodo }: { pedidos: Pedido[]; perio
   )
 }
 
-// ---------- Itens zerados ----------
-export function ItensZerados() {
+// ---------- Relatório de estoque (posição atual; filtro zerados / abaixo do mínimo) ----------
+export function RelatorioEstoque({ inicial = 'todos' }: { inicial?: 'todos' | 'zerados' | 'baixo' }) {
   const empresa = useEmpresa()
-  const [incluirBaixo, setIncluirBaixo] = useState(false)
+  const [filtro, setFiltro] = useState(inicial)
   const r = useLiveQuery(async () => {
     const [produtos, estoque, pedidos, categorias] = await Promise.all([db.produtos.filter((p) => p.ativo).toArray(), db.estoque.toArray(), db.pedidos.toArray(), db.categorias.toArray()])
     const saldo = new Map(estoque.map((e) => [e.produto_id, Number(e.saldo)]))
@@ -121,26 +122,35 @@ export function ItensZerados() {
     return produtos.map((p) => ({ p, saldo: saldo.get(p.id) ?? 0, ultima: ultima.get(p.id), cat: p.categoria_id ? cat.get(p.categoria_id) : undefined }))
   }, [])
   if (!r) return null
-  const lista = r.filter((x) => x.saldo <= 0 || (incluirBaixo && x.p.estoque_minimo > 0 && x.saldo <= x.p.estoque_minimo))
-    .sort((a, b) => a.saldo - b.saldo || a.p.nome.localeCompare(b.p.nome))
-  const negativos = lista.filter((x) => x.saldo < 0).length
+  const lista = r.filter((x) => filtro === 'todos' || x.saldo <= 0 || (filtro === 'baixo' && x.p.estoque_minimo > 0 && x.saldo <= x.p.estoque_minimo))
+    .sort((a, b) => filtro === 'todos' ? a.p.nome.localeCompare(b.p.nome) : a.saldo - b.saldo || a.p.nome.localeCompare(b.p.nome))
+  const valorCusto = lista.reduce((s, x) => s + Math.max(0, x.saldo) * Number(x.p.preco_custo ?? 0), 0)
+  const nomeFiltro = { todos: 'Relatório de estoque', zerados: 'Itens zerados', baixo: 'Itens zerados e abaixo do mínimo' }[filtro]
 
   function gerar() {
     return pdfRelatorio({
-      empresa, titulo: incluirBaixo ? 'Itens zerados e baixos' : 'Itens zerados', subtitulo: `Posição de ${data(new Date().toISOString())}`,
-      cabecalho: ['Código', 'Produto', 'Categoria', 'Saldo', 'Mínimo', 'Última venda'],
-      linhas: lista.map((x) => [x.p.codigo, x.p.nome, x.cat ?? '', num(x.saldo), num(x.p.estoque_minimo), x.ultima ? data(x.ultima) : '']),
-      direita: [3, 4], larguras: { 0: 16, 3: 16, 4: 16, 5: 24 },
-      totais: [['Zerados', String(lista.filter((x) => x.saldo === 0).length)], ['Negativos', String(negativos)], ['Total na lista', String(lista.length)]],
+      empresa, titulo: nomeFiltro, subtitulo: `Posição de ${dataHora(new Date().toISOString())}`,
+      cabecalho: ['Código', 'Produto', 'Categoria', 'Saldo', 'Mínimo', 'Custo', 'Valor', 'Última venda'],
+      linhas: lista.map((x) => [x.p.codigo, x.p.nome, x.cat ?? '', num(x.saldo), num(x.p.estoque_minimo), x.p.preco_custo ? brl(x.p.preco_custo) : '', x.saldo > 0 && x.p.preco_custo ? brl(x.saldo * x.p.preco_custo) : '', x.ultima ? data(x.ultima) : '']),
+      direita: [3, 4, 5, 6], larguras: { 0: 14, 3: 15, 4: 15, 5: 19, 6: 22, 7: 21 },
+      totais: [['Produtos', String(lista.length)], ['Zerados', String(lista.filter((x) => x.saldo === 0).length)], ['Negativos', String(lista.filter((x) => x.saldo < 0).length)], ['Unidades', num(lista.reduce((s, x) => s + Math.max(0, x.saldo), 0))], ['Valor (custo)', brl(valorCusto)]],
       nota: 'Saldo negativo = vendido sem estoque lançado. Confira e dê entrada da mercadoria.',
     })
   }
 
   return (
     <div className="space-y-3">
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={incluirBaixo} onChange={(e) => setIncluirBaixo(e.target.checked)} /> Incluir os que estão abaixo do estoque mínimo</label>
+      <div className="grid grid-cols-3 overflow-hidden rounded-xl ring-1 ring-stone-300">
+        {([['todos', 'Todos'], ['zerados', 'Zerados'], ['baixo', 'Abaixo mín.']] as const).map(([k, n]) => (
+          <button key={k} type="button" onClick={() => setFiltro(k)} className={'py-2 text-sm font-bold ' + (filtro === k ? 'bg-marca-700 text-white' : 'bg-white text-stone-600')}>{n}</button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="cartao"><p className="text-xs text-stone-500">Produtos</p><p className="text-xl font-extrabold">{lista.length}</p></div>
+        <div className="cartao"><p className="text-xs text-stone-500">Valor em estoque (custo)</p><p className="text-xl font-extrabold text-marca-700">{brl(valorCusto)}</p></div>
+      </div>
       <section className="cartao p-0">
-        {!lista.length && <p className="p-6 text-center text-sm text-stone-500">Nenhum item zerado.</p>}
+        {!lista.length && <p className="p-6 text-center text-sm text-stone-500">Nenhum item aqui.</p>}
         <ul className="divide-y divide-stone-100">
           {lista.map((x) => (
             <li key={x.p.id}>
@@ -155,13 +165,120 @@ export function ItensZerados() {
           ))}
         </ul>
       </section>
-      {!!lista.length && <BotoesPdf gerar={gerar} arquivo="itens-zerados.pdf" />}
+      {!!lista.length && <BotoesPdf gerar={gerar} arquivo={`${filtro === 'todos' ? 'estoque' : 'itens-zerados'}.pdf`} />}
+    </div>
+  )
+}
+
+// ---------- Relatório de movimentação de estoque (lê do servidor) ----------
+interface Mov { id: string; produto_id: string; tipo: string; quantidade: number; motivo: string | null; criado_em: string; pedidos: { numero: number | null } | null; entradas: { numero: number } | null }
+const TIPO_MOV: Record<string, string> = { entrada: 'Entrada', venda: 'Venda', estorno_venda: 'Estorno de venda', ajuste: 'Ajuste' }
+
+export function MovEstoque({ ini, fim, periodo }: { ini: string; fim: string; periodo: string }) {
+  const empresa = useEmpresa()
+  const [modo, setModo] = useState<'resumo' | 'detalhe'>('resumo')
+  const [movs, setMovs] = useState<Mov[] | null>(null)
+  const [erro, setErro] = useState('')
+  const produtos = useLiveQuery(async () => new Map((await db.produtos.toArray()).map((p) => [p.id, p])), []) ?? new Map<string, Produto>()
+  const saldos = useLiveQuery(async () => new Map((await db.estoque.toArray()).map((e) => [e.produto_id, Number(e.saldo)])), []) ?? new Map<string, number>()
+
+  useEffect(() => {
+    let vivo = true
+    setMovs(null); setErro('')
+    const ate = new Date(fim + 'T00:00:00'); ate.setDate(ate.getDate() + 1)
+    void (async () => {
+      const todos: Mov[] = []
+      for (let de = 0; ; de += 1000) {
+        const { data: d, error } = await supabase.from('movimentos_estoque')
+          .select('id, produto_id, tipo, quantidade, motivo, criado_em, pedidos(numero), entradas(numero)')
+          .gte('criado_em', new Date(ini + 'T00:00:00').toISOString()).lt('criado_em', ate.toISOString())
+          .order('criado_em').range(de, de + 999)
+        if (error) { if (vivo) setErro(navigator.onLine ? error.message : 'Sem internet. Este relatório precisa de conexão.'); return }
+        todos.push(...((d ?? []) as unknown as Mov[]))
+        if (!d || d.length < 1000) break
+      }
+      if (vivo) setMovs(todos)
+    })()
+    return () => { vivo = false }
+  }, [ini, fim])
+
+  const resumo = new Map<string, { entrada: number; venda: number; ajuste: number }>()
+  for (const m of movs ?? []) {
+    const r = resumo.get(m.produto_id) ?? { entrada: 0, venda: 0, ajuste: 0 }
+    const q = Number(m.quantidade)
+    if (m.tipo === 'entrada') r.entrada += q
+    else if (m.tipo === 'venda' || m.tipo === 'estorno_venda') r.venda += q
+    else r.ajuste += q
+    resumo.set(m.produto_id, r)
+  }
+  const linhasResumo = [...resumo.entries()].map(([id, r]) => ({ p: produtos.get(id), id, ...r, liquido: r.entrada + r.venda + r.ajuste }))
+    .sort((a, b) => (a.p?.nome ?? '').localeCompare(b.p?.nome ?? ''))
+  const tot = linhasResumo.reduce((s, x) => ({ e: s.e + x.entrada, v: s.v + x.venda, a: s.a + x.ajuste }), { e: 0, v: 0, a: 0 })
+  const sinal = (v: number) => (v > 0 ? '+' : '') + num(v)
+  const origem = (m: Mov) => m.tipo === 'entrada' ? `Entrada #${m.entradas?.numero ?? ''}` : m.pedidos ? `Pedido #${m.pedidos.numero ?? '-'}` : m.motivo ?? ''
+
+  function gerar() {
+    if (modo === 'resumo') return pdfRelatorio({
+      empresa, titulo: 'Movimentação de estoque', subtitulo: `${periodo} · resumo por produto`,
+      cabecalho: ['Código', 'Produto', 'Entradas', 'Vendas', 'Ajustes', 'Saldo do período', 'Saldo atual'],
+      linhas: linhasResumo.map((x) => [x.p?.codigo ?? '', x.p?.nome ?? 'Produto', sinal(x.entrada), sinal(x.venda), sinal(x.ajuste), sinal(x.liquido), num(saldos.get(x.id) ?? 0)]),
+      direita: [2, 3, 4, 5, 6], larguras: { 0: 14, 2: 18, 3: 18, 4: 18, 5: 24, 6: 20 },
+      totais: [['Produtos', String(linhasResumo.length)], ['Entradas', sinal(tot.e)], ['Vendas', sinal(tot.v)], ['Ajustes', sinal(tot.a)]],
+      nota: 'Vendas já descontam os estornos (pedido cancelado ou editado).',
+    })
+    return pdfRelatorio({
+      empresa, titulo: 'Movimentação de estoque', subtitulo: `${periodo} · detalhado`,
+      cabecalho: ['Data', 'Código', 'Produto', 'Tipo', 'Origem', 'Qtd'],
+      linhas: (movs ?? []).map((m) => [dataHora(m.criado_em), produtos.get(m.produto_id)?.codigo ?? '', produtos.get(m.produto_id)?.nome ?? 'Produto', TIPO_MOV[m.tipo] ?? m.tipo, origem(m), sinal(Number(m.quantidade))]),
+      direita: [5], larguras: { 0: 26, 1: 14, 3: 24, 5: 16 },
+      totais: [['Movimentos', String(movs?.length ?? 0)], ['Entradas', sinal(tot.e)], ['Vendas', sinal(tot.v)], ['Ajustes', sinal(tot.a)]],
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 overflow-hidden rounded-xl ring-1 ring-stone-300">
+        {([['resumo', 'Resumo por produto'], ['detalhe', 'Detalhado']] as const).map(([k, n]) => (
+          <button key={k} type="button" onClick={() => setModo(k)} className={'py-2 text-sm font-bold ' + (modo === k ? 'bg-marca-700 text-white' : 'bg-white text-stone-600')}>{n}</button>
+        ))}
+      </div>
+      {erro && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800 ring-1 ring-red-200">{erro}</p>}
+      {!movs && !erro && <p className="text-center text-sm text-stone-500">Carregando...</p>}
+      {movs && (
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="cartao p-2"><p className="text-[11px] text-stone-500">Entradas</p><p className="font-bold text-emerald-700">{sinal(tot.e)}</p></div>
+          <div className="cartao p-2"><p className="text-[11px] text-stone-500">Vendas</p><p className="font-bold text-red-700">{sinal(tot.v)}</p></div>
+          <div className="cartao p-2"><p className="text-[11px] text-stone-500">Ajustes</p><p className="font-bold">{sinal(tot.a)}</p></div>
+        </div>
+      )}
+      {movs && !movs.length && <p className="cartao p-6 text-center text-sm text-stone-500">Nenhuma movimentação no período.</p>}
+      {movs && !!movs.length && (
+        <section className="cartao p-0">
+          <ul className="divide-y divide-stone-100">
+            {modo === 'resumo' ? linhasResumo.map((x) => (
+              <li key={x.id} className="px-4 py-2.5 text-sm">
+                <p className="truncate font-semibold"><span className="font-normal text-stone-500">{x.p?.codigo}</span> {x.p?.nome ?? 'Produto'}</p>
+                <p className="text-xs text-stone-500">Entradas {sinal(x.entrada)} · Vendas {sinal(x.venda)} · Ajustes {sinal(x.ajuste)} · <b className="text-stone-700">Período {sinal(x.liquido)}</b></p>
+              </li>
+            )) : movs.map((m) => (
+              <li key={m.id} className="flex items-center gap-3 px-4 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate"><span className="text-stone-500">{produtos.get(m.produto_id)?.codigo}</span> {produtos.get(m.produto_id)?.nome ?? 'Produto'}</p>
+                  <p className="text-xs text-stone-500">{dataHora(m.criado_em)} · {TIPO_MOV[m.tipo] ?? m.tipo} · {origem(m)}</p>
+                </div>
+                <b className={Number(m.quantidade) > 0 ? 'text-emerald-700' : 'text-red-700'}>{sinal(Number(m.quantidade))}</b>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {movs && !!movs.length && <BotoesPdf gerar={gerar} arquivo={`movimentacao-estoque-${modo}.pdf`} />}
     </div>
   )
 }
 
 // ---------- Sugestão de compra ----------
-export function SugestaoCompra() {
+export function NecessidadeCompra() {
   const empresa = useEmpresa()
   const [base, setBase] = useState(30) // dias de venda analisados
   const [cobertura, setCobertura] = useState(15) // dias que a compra deve cobrir
@@ -192,7 +309,7 @@ export function SugestaoCompra() {
 
   function gerar() {
     return pdfRelatorio({
-      empresa, titulo: 'Sugestão de compra', subtitulo: `Venda dos últimos ${base} dias · cobrir ${cobertura} dias`,
+      empresa, titulo: 'Necessidade de compra', subtitulo: `Venda dos últimos ${base} dias · cobrir ${cobertura} dias`,
       cabecalho: ['Código', 'Produto', 'Vendido', 'Média/dia', 'Saldo', 'Dura (dias)', 'Comprar', 'Custo est.'],
       linhas: lista.map((x) => [x.p.codigo, x.p.nome, num(x.vendido), x.media.toFixed(1).replace('.', ','), num(x.saldo), x.dias === null ? '-' : String(x.dias), num(x.sugestao), x.custo ? brl(x.custo) : '']),
       direita: [2, 3, 4, 5, 6, 7], larguras: { 0: 14, 2: 16, 3: 16, 4: 15, 5: 16, 6: 17, 7: 22 },
@@ -233,7 +350,7 @@ export function SugestaoCompra() {
           ))}
         </ul>
       </section>
-      {!!lista.length && <BotoesPdf gerar={gerar} arquivo="sugestao-de-compra.pdf" />}
+      {!!lista.length && <BotoesPdf gerar={gerar} arquivo="necessidade-de-compra.pdf" />}
       <p className="text-center text-xs text-stone-400">Comprar = média por dia x dias escolhidos + estoque mínimo - saldo.</p>
     </div>
   )
