@@ -3,9 +3,10 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useOnline } from '../components/Layout'
 import { Aviso, Cabecalho, Icone } from '../components/ui'
+import { repetirPedido } from '../lib/repetir'
 import { useAuth } from '../lib/auth'
 import { db } from '../lib/db'
-import { brl, data, dataHora, docFormatado, foneFormatado, num, soDigitos, uuid } from '../lib/formato'
+import { brl, data, dataHora, docFormatado, foneFormatado, num, soDigitos } from '../lib/formato'
 import { nomeCliente } from '../lib/hooks'
 import { abrirPdf, compartilharPdf, pdfPedido } from '../lib/pdf'
 import { imprimir, lerConfig, montarCupom } from '../lib/impressora'
@@ -67,15 +68,7 @@ export default function PedidoDetalhe() {
   }
 
   async function duplicar() {
-    const novo = {
-      ...p, id: uuid(), numero: null, status: 'pendente' as const, data_pedido: new Date().toISOString(),
-      data_entrega: null, nfe_numero: null, exportado_nfe_em: null,
-      itens: p.itens.map((i) => ({ ...i, id: uuid() })), _sync: 'pendente' as const, _erro: undefined,
-    }
-    const { _sync, _erro, numero, subtotal, total, ...rascunho } = novo
-    void _sync; void _erro; void numero; void subtotal; void total
-    localStorage.setItem('maranata-rascunho-pedido', JSON.stringify(rascunho))
-    nav('/pedidos/novo')
+    if (await repetirPedido(p)) nav('/pedidos/novo')
   }
 
   function whatsapp() {
@@ -146,7 +139,7 @@ export default function PedidoDetalhe() {
           <button className="btn-primario" onClick={() => void compartilharPdf(pdfPedido(dados), nomeArq, `Pedido ${p.numero ?? ''}`)}><Icone nome="pdf" /> Enviar PDF</button>
           <button className="btn-secundario" onClick={() => abrirPdf(pdfPedido(dados))}><Icone nome="pdf" /> Ver / imprimir</button>
           <button className="btn-secundario" onClick={whatsapp}><Icone nome="whatsapp" /> WhatsApp</button>
-          <button className="btn-secundario" onClick={() => void duplicar()}><Icone nome="mais" /> Repetir pedido</button>
+          <button className="btn-secundario" onClick={() => void duplicar()}><Icone nome="mais" /> Duplicar venda</button>
           <button className="btn-secundario col-span-2" onClick={() => void imprimirCupom()}><Icone nome="impressora" /> Imprimir na térmica</button>
         </div>
 

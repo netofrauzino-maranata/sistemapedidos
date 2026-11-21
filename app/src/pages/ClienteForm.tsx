@@ -7,6 +7,7 @@ import { buscarCep, buscarCnpj } from '../lib/consultas'
 import { db } from '../lib/db'
 import { brl, cnpjValido, cpfValido, dataHora, soDigitos, uuid } from '../lib/formato'
 import { useCondicoes, useFormas, usePerfisMapa } from '../lib/hooks'
+import { CHAVE_COPIA, CHAVE_RASCUNHO, repetirPedido } from '../lib/repetir'
 import { sincronizar } from '../lib/sync'
 import { STATUS_COR, STATUS_LABEL, type Cliente } from '../lib/tipos'
 
@@ -40,6 +41,8 @@ export default function ClienteForm() {
   }, [id, gestor, perfil?.id, nav])
 
   const pedidos = useLiveQuery(() => (id ? db.pedidos.where('cliente_id').equals(id).reverse().sortBy('data_pedido') : []), [id]) ?? []
+
+  const ultima = pedidos.find((p) => p.status !== 'cancelado' && p.status !== 'orcamento') ?? pedidos.find((p) => p.status !== 'cancelado')
 
   if (!c) return null
   const set = (p: Partial<Cliente>) => setC({ ...c, ...p })
@@ -87,8 +90,8 @@ export default function ClienteForm() {
     void sincronizar()
     if (params.get('voltar') === 'pedido') {
       try {
-        const r = JSON.parse(localStorage.getItem('maranata-rascunho-pedido') ?? 'null')
-        if (r) localStorage.setItem('maranata-rascunho-pedido', JSON.stringify({ ...r, cliente_id: salvo.id }))
+        const r = JSON.parse(localStorage.getItem(CHAVE_RASCUNHO) ?? 'null')
+        if (r) localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify({ ...r, cliente_id: salvo.id }))
       } catch { /* ignora */ }
       return nav('/pedidos/novo', { replace: true })
     }
@@ -99,11 +102,28 @@ export default function ClienteForm() {
     <>
       <Cabecalho titulo={id ? 'Cliente' : 'Novo cliente'} voltar />
       <form onSubmit={salvar} className="space-y-3 p-4">
+        {id && ultima && (
+          <section className="cartao space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Última venda</p>
+                <Link to={`/pedidos/${ultima.id}`} className="block truncate font-bold text-marca-700">
+                  {ultima.numero ? `#${ultima.numero}` : 'Não enviada'} · {dataHora(ultima.data_pedido)}
+                </Link>
+                <p className="text-xs text-stone-500">{ultima.itens.length} produto(s)</p>
+              </div>
+              <p className="shrink-0 text-lg font-extrabold">{brl(ultima.total)}</p>
+            </div>
+            <button type="button" className="btn-primario w-full" onClick={() => void repetirPedido(ultima).then((ok) => ok && nav('/pedidos/novo'))}>
+              <Icone nome="mais" /> Duplicar esta venda
+            </button>
+          </section>
+        )}
         {id && (
-          <Link to="/pedidos/novo" onClick={() => localStorage.setItem('maranata-rascunho-pedido', JSON.stringify({
+          <Link to="/pedidos/novo" onClick={() => { localStorage.removeItem(CHAVE_COPIA); localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify({
             id: uuid(), cliente_id: c.id, status: 'pendente', data_pedido: new Date().toISOString(), data_entrega: null,
             condicao_pagamento_id: c.condicao_pagamento_id, forma_pagamento_id: c.forma_pagamento_id, desconto: 0, frete: 0, observacao: '', itens: [],
-          }))} className="btn w-full bg-destaque text-stone-900"><Icone nome="mais" /> Novo pedido para este cliente</Link>
+          })) }} className="btn w-full bg-destaque text-stone-900"><Icone nome="mais" /> Novo pedido para este cliente</Link>
         )}
 
         <section className="cartao space-y-3">
