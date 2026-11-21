@@ -6,7 +6,8 @@ import { useAuth } from '../lib/auth'
 import { db, mapaPrecos } from '../lib/db'
 import { arred, brl, docFormatado, filtrarProdutos, normalizar, num, uuid } from '../lib/formato'
 import { nomeCliente, useCondicoes, useEstoqueMapa, useFormas } from '../lib/hooks'
-import { CHAVE_COPIA, CHAVE_RASCUNHO } from '../lib/repetir'
+import { CHAVE_COPIA, CHAVE_RASCUNHO, CHAVE_SOLICITACAO } from '../lib/repetir'
+import { supabase } from '../lib/supabase'
 import { sincronizar } from '../lib/sync'
 import type { Cliente, ItemPedido, Pedido, Produto } from '../lib/tipos'
 
@@ -37,6 +38,10 @@ export default function PedidoForm() {
   const [copia] = useState<{ numero: number | null; fora: number } | null>(() => {
     if (id) return null
     try { return JSON.parse(localStorage.getItem(CHAVE_COPIA) ?? 'null') } catch { return null }
+  })
+  const [solicitacao] = useState<{ id: string; numero: number } | null>(() => {
+    if (id) return null
+    try { return JSON.parse(localStorage.getItem(CHAVE_SOLICITACAO) ?? 'null') } catch { return null }
   })
 
   // carrega pedido existente ou rascunho salvo
@@ -121,14 +126,18 @@ export default function PedidoForm() {
       desconto: descontoTotal, subtotal, total, _sync: 'pendente', _erro: undefined,
     }
     await db.pedidos.put(pedido)
-    if (!id) { localStorage.removeItem(CHAVE_RASCUNHO); localStorage.removeItem(CHAVE_COPIA) }
-    void sincronizar()
+    if (!id) { localStorage.removeItem(CHAVE_RASCUNHO); localStorage.removeItem(CHAVE_COPIA); localStorage.removeItem(CHAVE_SOLICITACAO) }
+    if (solicitacao) {
+      // marca o pedido do catálogo como aprovado; liga ao pedido depois que ele chega no servidor
+      void supabase.from('pedidos_catalogo').update({ status: 'aprovada' }).eq('id', solicitacao.id).then(() =>
+        sincronizar().then(() => supabase.from('pedidos_catalogo').update({ pedido_id: pedido.id }).eq('id', solicitacao.id)))
+    } else void sincronizar()
     nav(`/pedidos/${pedido.id}`, { replace: true })
   }
 
   function descartar() {
     if (!confirm('Descartar este pedido?')) return
-    if (!id) { localStorage.removeItem(CHAVE_RASCUNHO); localStorage.removeItem(CHAVE_COPIA) }
+    if (!id) { localStorage.removeItem(CHAVE_RASCUNHO); localStorage.removeItem(CHAVE_COPIA); localStorage.removeItem(CHAVE_SOLICITACAO) }
     nav(-1)
   }
 
@@ -137,6 +146,7 @@ export default function PedidoForm() {
       <Cabecalho titulo={id ? `Editar pedido ${p.numero ? '#' + p.numero : ''}` : 'Novo pedido'} voltar
         acao={<button className="rounded-full p-2 hover:bg-white/10" onClick={descartar} aria-label="Descartar"><Icone nome="lixo" /></button>} />
       <main className="space-y-3 p-4 pb-48">
+        {solicitacao && <Aviso tipo="info">Pedido do catálogo nº {solicitacao.numero}, enviado pelo cliente. Confira itens e preços e salve para virar pedido de venda.</Aviso>}
         {copia && <Aviso tipo="info">Cópia da venda {copia.numero ? `#${copia.numero}` : 'anterior'}, já com os preços de hoje. Confira, mude as quantidades, tire ou inclua itens e salve.{copia.fora ? ` ${copia.fora} produto(s) desativado(s) ficaram de fora.` : ''}</Aviso>}
         {/* cliente */}
         <button className="cartao flex w-full items-center gap-3 text-left" onClick={() => setEscolherCliente(true)}>

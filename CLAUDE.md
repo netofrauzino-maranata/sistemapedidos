@@ -76,6 +76,9 @@ Tela `/carga` (gestor, `pages/Carga.tsx`): pedidos pendente/confirmado/faturado 
 ## Relatórios extras
 `pages/RelatoriosExtras.tsx` (abas em Relatórios): menu no modelo do sistema antigo (Relatório de vendas, Produtos vendidos detalhe e resumo, Necessidade de compra, Mov. estoque, Estoque, Itens zerados, por categoria, vendedor, cliente, sem compra), aberto por `?r=`. Necessidade de compra (média diária x dias + mínimo - saldo; inclui trocas). PDF genérico `pdfRelatorio` em `pdf.ts`. Categorias se organizam em Mais > Categorias de produtos (`pages/Categorias.tsx`, mover produtos em lote). Validade é opcional na entrada.
 
+## Catálogo online
+Cada cliente tem `link_token`; `/c/<token>` é página pública (`pages/CatalogoCliente.tsx`, rota tratada em `App.tsx` antes do login). Lê `catalogo_publico(token)` (preço da tabela do cliente, sem custo/estoque) e envia por `enviar_pedido_catalogo` (security definer, limite de 10 envios/hora). Envios ficam em `pedidos_catalogo` (status nova/aprovada/recusada). Tela `Pedidos do catálogo` gera rascunho (`rascunhoDoCatalogo` em `lib/repetir.ts`); ao salvar o pedido marca aprovada e liga `pedido_id`. Link enviado do cadastro do cliente.
+
 ## Dados de clientes
 O repositório é público: nunca coloque aqui planilhas, scripts de importação ou qualquer dado de clientes.
 

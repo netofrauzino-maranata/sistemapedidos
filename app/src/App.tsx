@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { useAuth } from './lib/auth'
 import { supabaseConfigurado } from './lib/supabase'
@@ -24,6 +24,8 @@ import TabelasPreco from './pages/TabelasPreco'
 import Impressora from './pages/Impressora'
 import Carga from './pages/Carga'
 import Categorias from './pages/Categorias'
+import CatalogoCliente from './pages/CatalogoCliente'
+import PedidosCatalogo from './pages/PedidosCatalogo'
 import EntradasHistorico from './pages/EntradasHistorico'
 
 function SoGestor({ children }: { children: ReactNode }) {
@@ -33,6 +35,7 @@ function SoGestor({ children }: { children: ReactNode }) {
 
 export default function App() {
   const { session, perfil, carregando } = useAuth()
+  const local = useLocation()
 
   if (!supabaseConfigurado) {
     return (
@@ -42,6 +45,8 @@ export default function App() {
       </div>
     )
   }
+  // catálogo online do cliente: público, sem login
+  if (local.pathname.startsWith('/c/')) return <Routes><Route path="/c/:token" element={<CatalogoCliente />} /></Routes>
   if (carregando) return <div className="flex h-full items-center justify-center text-marca-700">Carregando...</div>
   if (!session) return <Login />
   if (perfil && !perfil.ativo) return <AguardandoLiberacao />
@@ -66,6 +71,7 @@ export default function App() {
         <Route path="estoque" element={<SoGestor><Estoque /></SoGestor>} />
         <Route path="estoque/entrada" element={<SoGestor><Entrada /></SoGestor>} />
         <Route path="estoque/entradas" element={<SoGestor><EntradasHistorico /></SoGestor>} />
+        <Route path="catalogo-pedidos" element={<PedidosCatalogo />} />
         <Route path="carga" element={<SoGestor><Carga /></SoGestor>} />
         <Route path="exportar-nfe" element={<SoGestor><ExportarNfe /></SoGestor>} />
         <Route path="config/empresa" element={<SoGestor><Empresa /></SoGestor>} />
