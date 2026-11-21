@@ -31,11 +31,14 @@ function cabecalho(doc: jsPDF, empresa: Empresa | null | undefined, titulo: stri
   const x = 6 + lw + 4
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold'); doc.setFontSize(12)
-  doc.text(empresa?.razao_social || 'Maranata Distribuidora', x, 10)
+  doc.text(empresa?.razao_social || 'Maranata Distribuidora', x, 8.5, { maxWidth: w - x - 58 })
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
-  const linha2 = [empresa?.cnpj && `CNPJ ${docFormatado(empresa.cnpj)}`, empresa?.ie && `IE ${empresa.ie}`, empresa?.email, empresa?.telefone && foneFormatado(empresa.telefone), empresa?.whatsapp && `WhatsApp ${foneFormatado(empresa.whatsapp)}`].filter(Boolean).join('  ·  ')
-  doc.text(linha2, x, 15.5)
-  doc.text(enderecoEmpresa(empresa), x, 20, { maxWidth: w - x - 62 })
+  const larg = w - x - 58
+  const l2 = [empresa?.cnpj && `CNPJ ${docFormatado(empresa.cnpj)}`, empresa?.ie && `IE ${empresa.ie}`].filter(Boolean).join('  ·  ')
+  const l3 = [empresa?.telefone && foneFormatado(empresa.telefone), empresa?.email].filter(Boolean).join('  ·  ')
+  doc.text(l2, x, 13.5, { maxWidth: larg })
+  doc.text(l3, x, 17.5, { maxWidth: larg })
+  doc.text(enderecoEmpresa(empresa), x, 21.5, { maxWidth: larg })
   doc.setFont('helvetica', 'bold'); doc.setFontSize(13)
   doc.text(titulo, w - 10, 11, { align: 'right' })
   if (subtitulo) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.text(subtitulo, w - 10, 17, { align: 'right' }) }
