@@ -10,6 +10,7 @@ import { useCategorias } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
 import { sincronizar } from '../lib/sync'
 import { UNIDADES, type Produto } from '../lib/tipos'
+import { fotoDoProduto } from '../lib/fotos'
 
 function vazio(): Produto {
   return {
@@ -109,7 +110,7 @@ export default function ProdutoForm() {
 
         <section className="cartao flex gap-3">
           <label className={'relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-marca-50 ' + (gestor ? 'cursor-pointer' : '')}>
-            {p.foto_url ? <img src={p.foto_url} alt="" className="h-full w-full object-cover" /> : <Icone nome="produto" className="h-8 w-8 text-marca-200" />}
+            {fotoDoProduto(p) ? <img src={fotoDoProduto(p)!} alt="" className="h-full w-full object-cover" /> : <Icone nome="produto" className="h-8 w-8 text-marca-200" />}
             {gestor && <input type="file" accept="image/*" className="hidden" onChange={(e) => void enviarFoto(e.target.files?.[0])} />}
             {gestor && <span className="absolute bottom-0 inset-x-0 bg-black/40 text-center text-[10px] text-white">Foto</span>}
           </label>

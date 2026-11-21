@@ -3,13 +3,21 @@ import { Aviso, Cabecalho, Campo, Icone } from '../components/ui'
 import { db } from '../lib/db'
 import { useCategorias, useEmpresa } from '../lib/hooks'
 import { abrirPdf, compartilharPdf, pdfCatalogo } from '../lib/pdf'
+import { fotoDoProduto } from '../lib/fotos'
 
 async function paraDataUrl(url: string): Promise<string | null> {
   try {
     const r = await fetch(url)
     if (!r.ok) return null
-    const b = await r.blob()
-    return await new Promise((ok) => { const f = new FileReader(); f.onload = () => ok(f.result as string); f.readAsDataURL(b) })
+    // converte para JPEG (o PDF não lê WebP) e reduz para o tamanho do cartão
+    const bmp = await createImageBitmap(await r.blob())
+    const lado = 480, k = Math.min(1, lado / Math.max(bmp.width, bmp.height))
+    const c = document.createElement('canvas')
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k)
+    const g = c.getContext('2d')!
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height)
+    g.drawImage(bmp, 0, 0, c.width, c.height)
+    return c.toDataURL('image/jpeg', 0.85)
   } catch { return null }
 }
 
@@ -35,8 +43,8 @@ export default function Catalogo() {
       let mapa: Map<string, string> | undefined
       if (fotos) {
         mapa = new Map()
-        await Promise.all(produtos.filter((p) => p.foto_url).map(async (p) => {
-          const d = await paraDataUrl(p.foto_url!)
+        await Promise.all(produtos.filter((p) => fotoDoProduto(p)).map(async (p) => {
+          const d = await paraDataUrl(fotoDoProduto(p)!)
           if (d) mapa!.set(p.id, d)
         }))
         if (!mapa.size) mapa.set('__grade__', '') // mantém grade com espaço de foto

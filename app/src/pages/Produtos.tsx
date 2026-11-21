@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth'
 import { db } from '../lib/db'
 import { brl, data, filtrarProdutos, num } from '../lib/formato'
 import { useCategorias, useEstoqueMapa } from '../lib/hooks'
+import { fotoDoProduto } from '../lib/fotos'
 
 export default function Produtos() {
   const { gestor } = useAuth()
@@ -42,7 +43,7 @@ export default function Produtos() {
           const saldo = e?.saldo ?? 0
           return (
             <Link key={p.id} to={`/produtos/${p.id}`} className={'cartao flex items-center gap-3 p-3 ' + (p.ativo ? '' : 'opacity-50')}>
-              {p.foto_url ? <img src={p.foto_url} alt="" loading="lazy" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+              {fotoDoProduto(p) ? <img src={fotoDoProduto(p)!} alt="" loading="lazy" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
                 : <div className="h-12 w-12 shrink-0 rounded-lg bg-marca-50" />}
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">{p.nome}</p>
