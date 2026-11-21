@@ -55,16 +55,19 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 -- Cria o perfil quando alguém se cadastra no Auth.
--- O primeiro usuário do sistema vira gestor; os demais entram como vendedor.
+-- O primeiro usuário do sistema vira gestor ativo. Os demais entram como
+-- vendedor INATIVO e só acessam depois que o gestor liberar no app.
 create or replace function public.tg_novo_usuario()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare v_primeiro boolean := not exists (select 1 from public.perfis);
 begin
-  insert into public.perfis (id, nome, email, papel)
+  insert into public.perfis (id, nome, email, papel, ativo)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'nome', split_part(new.email, '@', 1)),
     new.email,
-    case when exists (select 1 from public.perfis) then 'vendedor' else 'gestor' end
+    case when v_primeiro then 'gestor' else 'vendedor' end,
+    v_primeiro
   )
   on conflict (id) do nothing;
   return new;

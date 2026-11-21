@@ -5,11 +5,13 @@ insert into auth.users (id, email, raw_user_meta_data) values
  ('00000000-0000-0000-0000-00000000000a','neto@maranata.com','{"nome":"Neto"}'),
  ('00000000-0000-0000-0000-00000000000b','joao@maranata.com','{"nome":"João"}'),
  ('00000000-0000-0000-0000-00000000000c','ana@maranata.com','{"nome":"Ana"}');
-select nome, papel from public.perfis order by nome;
+select nome, papel, ativo from public.perfis order by nome;
 
 -- ===== como GESTOR
 set role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000000a',false);
+-- novos vendedores entram inativos; gestor libera
+update public.perfis set ativo = true where papel = 'vendedor';
 insert into public.produtos (id, codigo, nome, unidade, ncm, preco_venda) values
  ('11111111-0000-0000-0000-000000000001','001','Arroz 5kg','FD','10063021',25.90);
 insert into public.clientes (id, razao_social, cpf_cnpj, vendedor_id) values
