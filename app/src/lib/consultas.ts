@@ -35,5 +35,26 @@ export async function buscarCnpj(cnpj: string) {
     codigo_ibge: j.codigo_municipio_ibge ? String(j.codigo_municipio_ibge) : null,
     telefone: tel || null,
     email: (j.email as string)?.toLowerCase() || null,
+    ...(await buscarIe(d, j.uf as string)),
+  }
+}
+
+// Inscrição estadual: a Receita (BrasilAPI) não informa. Vem da API pública do CNPJá,
+// que consulta o cadastro de contribuintes (CCC/SINTEGRA). Grátis, com limite de
+// algumas consultas por minuto. Se falhar, o cadastro segue e a IE é digitada à mão.
+export async function buscarIe(cnpj: string, uf?: string): Promise<{ ie?: string; indicador_ie?: 1 | 9 }> {
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 8000)
+    const r = await fetch(`https://open.cnpja.com/office/${soDigitos(cnpj)}`, { signal: ctrl.signal })
+    clearTimeout(t)
+    if (!r.ok) return {}
+    const j = await r.json()
+    const regs = (j.registrations ?? []) as { number: string; state: string; enabled: boolean }[]
+    if (!Array.isArray(j.registrations)) return {}
+    const ie = regs.find((x) => x.enabled && (!uf || x.state === uf)) ?? regs.find((x) => x.enabled)
+    return ie ? { ie: soDigitos(ie.number), indicador_ie: 1 } : { indicador_ie: 9 }
+  } catch {
+    return {}
   }
 }
