@@ -62,7 +62,7 @@ export function RelClientes(f: Filtro & { vendedor: string }) {
 
   const t = normalizar(q)
   const lista = d.clientes
-    .filter((c) => c.ativo && (!f.vendedor || c.vendedor_id === f.vendedor))
+    .filter((c) => c.ativo && c.eh_cliente !== false && (!f.vendedor || c.vendedor_id === f.vendedor))
     .filter((c) => !t || normalizar(`${c.codigo ?? ''} ${c.razao_social} ${c.nome_fantasia ?? ''} ${c.cidade ?? ''} ${c.cpf_cnpj ?? ''}`).includes(t))
     .map((c) => ({ c, r: resumoDe(c.id) }))
     .sort((a, b) => (ordem === 'valor' ? b.r.valor - a.r.valor : 0) || nomeCliente(a.c).localeCompare(nomeCliente(b.c)))

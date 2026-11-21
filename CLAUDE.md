@@ -79,6 +79,9 @@ Tela `/carga` (gestor, `pages/Carga.tsx`): pedidos pendente/confirmado/faturado 
 ## Catálogo online
 Cada cliente tem `link_token`; `/c/<token>` é página pública (`pages/CatalogoCliente.tsx`, rota tratada em `App.tsx` antes do login). Lê `catalogo_publico(token)` (preço da tabela do cliente, sem custo/estoque) e envia por `enviar_pedido_catalogo` (security definer, limite de 10 envios/hora). Envios ficam em `pedidos_catalogo` (status nova/aprovada/recusada). Tela `Pedidos do catálogo` gera rascunho (`rascunhoDoCatalogo` em `lib/repetir.ts`); ao salvar o pedido marca aprovada e liga `pedido_id`. Principal: link único `/loja` (`catalogo_geral`, preço padrão; `enviar_pedido_catalogo_geral` exige nome e celular, `cliente_id` nulo). Na aprovação o gestor escolhe o cliente (sugestão pelo celular) ou cadastra novo; o pedido usa a tabela do escolhido. Link exclusivo por cliente continua como opção no cadastro.
 
+## Cliente e fornecedor no mesmo cadastro
+`clientes.eh_cliente` / `eh_fornecedor` (pelo menos um). Trigger `tg_clientes_fornecedor` cria/atualiza `fornecedores` com o mesmo id, que é o que a Entrada e o relatório usam. Listas de venda filtram `eh_cliente !== false` (`ehCliente` em `hooks.ts`).
+
 ## Dados de clientes
 O repositório é público: nunca coloque aqui planilhas, scripts de importação ou qualquer dado de clientes.
 

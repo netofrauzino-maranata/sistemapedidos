@@ -273,7 +273,7 @@ function EscolherCliente({ aberta, onFechar, onEscolher }: { aberta: boolean; on
   const nav = useNavigate()
   const lista = useLiveQuery(async () => {
     const t = normalizar(q)
-    const todos = await db.clientes.filter((c) => c.ativo).toArray()
+    const todos = await db.clientes.filter((c) => c.ativo && c.eh_cliente !== false).toArray()
     return todos.filter((c) => !t || normalizar(`${c.razao_social} ${c.nome_fantasia} ${c.cpf_cnpj} ${c.cidade} ${c.codigo}`).includes(t))
       .sort((a, b) => nomeCliente(a).localeCompare(nomeCliente(b))).slice(0, 60)
   }, [q]) ?? []

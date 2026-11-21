@@ -149,7 +149,7 @@ function Relatorio({ item }: { item: ItemMenu }) {
       const u = ultimaCompra.get(p.cliente_id)
       if (!u || p.data_pedido > u) ultimaCompra.set(p.cliente_id, p.data_pedido)
     })
-    const carteira = clientes.filter((c) => c.ativo && (gestor ? (!vendedor || c.vendedor_id === vendedor) : true))
+    const carteira = clientes.filter((c) => c.ativo && c.eh_cliente !== false && (gestor ? (!vendedor || c.vendedor_id === vendedor) : true))
     const semCompra: Linha[] = carteira.filter((c) => !compraram.has(c.id)).map((c) => ({
       chave: c.id, nome: nomeCliente(c), pedidos: 0, quantidade: 0, total: 0,
       extra: ultimaCompra.get(c.id) ? `última compra ${data(ultimaCompra.get(c.id)!)}` : 'nunca comprou',

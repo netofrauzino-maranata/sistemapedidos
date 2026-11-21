@@ -106,6 +106,8 @@ export interface Cliente {
   forma_pagamento_id: string | null
   tabela_preco_id?: string | null
   link_token?: string // link do catálogo online (/c/token)
+  eh_cliente?: boolean // false = só fornecedor (fica fora das vendas)
+  eh_fornecedor?: boolean // true = aparece na Entrada de mercadoria
   limite_credito: number | null
   observacao: string | null
   ativo: boolean

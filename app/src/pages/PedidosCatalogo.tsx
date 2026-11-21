@@ -152,9 +152,9 @@ function EscolherCliente({ s, clientes, onFechar, onEscolher }: { s: PedidoCatal
   if (!s) return null
   const cel = soDigitos(s.celular).replace(/^55/, '')
   const fim = cel.slice(-8)
-  const sugeridos = fim.length === 8 ? clientes.filter((c) => c.ativo && [c.whatsapp, c.telefone].some((f) => soDigitos(f).endsWith(fim))) : []
+  const sugeridos = fim.length === 8 ? clientes.filter((c) => c.ativo && c.eh_cliente !== false && [c.whatsapp, c.telefone].some((f) => soDigitos(f).endsWith(fim))) : []
   const t = normalizar(q)
-  const lista = t ? clientes.filter((c) => c.ativo && normalizar(`${c.codigo ?? ''} ${c.razao_social} ${c.nome_fantasia ?? ''} ${c.cidade ?? ''} ${soDigitos(c.whatsapp)} ${soDigitos(c.telefone)}`).includes(t)).slice(0, 40) : []
+  const lista = t ? clientes.filter((c) => c.ativo && c.eh_cliente !== false && normalizar(`${c.codigo ?? ''} ${c.razao_social} ${c.nome_fantasia ?? ''} ${c.cidade ?? ''} ${soDigitos(c.whatsapp)} ${soDigitos(c.telefone)}`).includes(t)).slice(0, 40) : []
   const Item = ({ c }: { c: Cliente }) => (
     <li><button className="w-full py-2.5 text-left" onClick={() => onEscolher(c.id)}>
       <b>{nomeCliente(c)}</b> <span className="text-xs text-stone-500">{c.codigo ? `${c.codigo} · ` : ''}{c.cidade ?? ''} · {foneFormatado(c.whatsapp || c.telefone)}</span>

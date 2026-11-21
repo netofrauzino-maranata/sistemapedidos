@@ -38,7 +38,7 @@ export default function ClienteForm() {
 
   useEffect(() => {
     if (id) void db.clientes.get(id).then((x) => (x ? setC(x) : nav('/clientes', { replace: true })))
-    else setC({ ...vazio(gestor ? null : perfil?.id ?? null), razao_social: params.get('nome') ?? '', whatsapp: params.get('fone') || null })
+    else setC({ ...vazio(gestor ? null : perfil?.id ?? null), razao_social: params.get('nome') ?? '', whatsapp: params.get('fone') || null, eh_cliente: params.get('tipo') !== 'fornecedor', eh_fornecedor: params.get('tipo') === 'fornecedor' })
   }, [id, gestor, perfil?.id, nav, params])
 
   const pedidos = useLiveQuery(() => (id ? db.pedidos.where('cliente_id').equals(id).reverse().sortBy('data_pedido') : []), [id]) ?? []
@@ -46,6 +46,8 @@ export default function ClienteForm() {
   const ultima = pedidos.find((p) => p.status !== 'cancelado' && p.status !== 'orcamento') ?? pedidos.find((p) => p.status !== 'cancelado')
 
   if (!c) return null
+  const cli = c.eh_cliente !== false
+  const forn = !!c.eh_fornecedor
   const set = (p: Partial<Cliente>) => setC({ ...c, ...p })
   const txt = (k: keyof Cliente) => ({
     value: (c[k] as string | null) ?? '',
@@ -101,9 +103,21 @@ export default function ClienteForm() {
 
   return (
     <>
-      <Cabecalho titulo={id ? 'Cliente' : 'Novo cliente'} voltar />
+      <Cabecalho titulo={id ? (cli ? (forn ? 'Cliente e fornecedor' : 'Cliente') : 'Fornecedor') : 'Novo cadastro'} voltar />
       <form onSubmit={salvar} className="space-y-3 p-4">
-        {id && ultima && (
+        {gestor && (
+          <section className="cartao space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Este cadastro é</p>
+            <div className="grid grid-cols-3 overflow-hidden rounded-xl ring-1 ring-stone-300">
+              {([['cliente', 'Cliente', true, false], ['fornecedor', 'Fornecedor', false, true], ['ambos', 'Os dois', true, true]] as const).map(([k, n, ec, ef]) => (
+                <button type="button" key={k} onClick={() => set({ eh_cliente: ec, eh_fornecedor: ef })}
+                  className={'py-2 text-sm font-bold ' + (cli === ec && forn === ef ? 'bg-marca-700 text-white' : 'bg-white text-stone-600')}>{n}</button>
+              ))}
+            </div>
+            {forn && <p className="text-xs text-stone-500">Como fornecedor, aparece na Entrada de mercadoria e no relatório de fornecedores.{cli ? '' : ' Fica fora das vendas e do catálogo.'}</p>}
+          </section>
+        )}
+        {id && cli && ultima && (
           <section className="cartao space-y-2">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -120,8 +134,8 @@ export default function ClienteForm() {
             </button>
           </section>
         )}
-        {id && <CatalogoOnline c={c} onToken={(t) => setC({ ...c, link_token: t })} />}
-        {id && (
+        {id && cli && <CatalogoOnline c={c} onToken={(t) => setC({ ...c, link_token: t })} />}
+        {id && cli && (
           <Link to="/pedidos/novo" onClick={() => { localStorage.removeItem(CHAVE_COPIA); localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify({
             id: uuid(), cliente_id: c.id, status: 'pendente', data_pedido: new Date().toISOString(), data_entrega: null,
             condicao_pagamento_id: c.condicao_pagamento_id, forma_pagamento_id: c.forma_pagamento_id, desconto: 0, frete: 0, observacao: '', itens: [],
@@ -184,7 +198,8 @@ export default function ClienteForm() {
         </section>
 
         <section className="cartao grid grid-cols-2 gap-3">
-          <h2 className="col-span-2 font-bold">Comercial</h2>
+          <h2 className="col-span-2 font-bold">{cli ? 'Comercial' : 'Observações'}</h2>
+          {cli && <>
           <Campo rotulo="Condição padrão">
             <select className="campo" value={c.condicao_pagamento_id ?? ''} onChange={(e) => set({ condicao_pagamento_id: e.target.value || null })}>
               <option value="">Nenhuma</option>{condicoes.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
@@ -195,7 +210,8 @@ export default function ClienteForm() {
               <option value="">Nenhuma</option>{formas.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
             </select>
           </Campo>
-          {gestor && (
+          </>}
+          {gestor && cli && (
             <>
               <Campo rotulo="Tabela de preço" className="col-span-2">
                 <select className="campo" value={c.tabela_preco_id ?? ''} onChange={(e) => set({ tabela_preco_id: e.target.value || null })}>
@@ -216,7 +232,7 @@ export default function ClienteForm() {
           <Campo rotulo="Observações" className="col-span-2"><textarea className="campo" rows={2} {...txt('observacao')} /></Campo>
           {id && (
             <label className="col-span-2 flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={c.ativo} onChange={(e) => set({ ativo: e.target.checked })} /> Cliente ativo
+              <input type="checkbox" checked={c.ativo} onChange={(e) => set({ ativo: e.target.checked })} /> Cadastro ativo
             </label>
           )}
         </section>
