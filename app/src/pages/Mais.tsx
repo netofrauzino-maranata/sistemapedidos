@@ -17,6 +17,7 @@ export default function Mais() {
     ['/config/impressora', 'Impressora Bluetooth', 'impressora', false],
     ['/relatorios', 'Relatórios', 'grafico', false],
     ['/exportar-nfe', 'Exportar vendas para NF-e', 'exportar', true],
+    ['/config/categorias', 'Categorias de produtos', 'caixa', true],
     ['/config/tabelas', 'Tabelas de preço', 'preco', true],
     ['/config/empresa', 'Dados da empresa', 'empresa', true],
     ['/config/usuarios', 'Usuários e vendedores', 'usuarios', true],

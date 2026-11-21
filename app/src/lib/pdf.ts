@@ -338,3 +338,63 @@ export function pdfCarga(tipo: TipoRelatorioCarga, d: DadosCarga) {
   rodape(doc, `Gerado em ${dataHora(new Date().toISOString())}`)
   return doc
 }
+
+// ---------- Relatório genérico em tabela (categoria, zerados, sugestão de compra) ----------
+export type LinhaRelatorio = string[] | { grupo: string[] }
+export interface OpcoesRelatorio {
+  empresa?: Empresa | null
+  titulo: string
+  subtitulo?: string
+  cabecalho: string[]
+  linhas: LinhaRelatorio[]
+  direita?: number[] // colunas alinhadas à direita
+  larguras?: Record<number, number>
+  totais?: [string, string][]
+  nota?: string
+}
+
+export function pdfRelatorio(o: OpcoesRelatorio) {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const w = doc.internal.pageSize.getWidth()
+  cabecalho(doc, o.empresa, o.titulo.toUpperCase(), o.subtitulo)
+  const grupos = new Set<number>()
+  const body = o.linhas.map((l, k) => { if (!Array.isArray(l)) { grupos.add(k); return l.grupo } return l })
+  const colunas: Record<number, { halign?: 'right'; cellWidth?: number }> = {}
+  o.direita?.forEach((c) => (colunas[c] = { ...colunas[c], halign: 'right' }))
+  Object.entries(o.larguras ?? {}).forEach(([c, v]) => (colunas[Number(c)] = { ...colunas[Number(c)], cellWidth: v }))
+  autoTable(doc, {
+    startY: 33, head: [o.cabecalho], body,
+    theme: 'striped',
+    headStyles: { fillColor: AZUL, fontSize: 8.5 },
+    bodyStyles: { fontSize: 8.5 },
+    alternateRowStyles: { fillColor: [243, 246, 252] },
+    columnStyles: colunas,
+    margin: { left: 10, right: 10 },
+    didParseCell: (d) => {
+      if (d.section === 'head' && o.direita?.includes(d.column.index)) d.cell.styles.halign = 'right'
+      if (d.section === 'body' && grupos.has(d.row.index)) {
+        d.cell.styles.fillColor = [220, 232, 253]; d.cell.styles.fontStyle = 'bold'; d.cell.styles.textColor = [24, 74, 159]
+      }
+    },
+  })
+  let y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6
+  if (o.totais?.length) {
+    if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = 14 }
+    const larg = (w - 20 - (o.totais.length - 1) * 2) / o.totais.length
+    o.totais.forEach(([rot, val], k) => {
+      const x = 10 + k * (larg + 2), ultimo = k === o.totais!.length - 1
+      if (ultimo) doc.setFillColor(...AZUL); else doc.setFillColor(239, 245, 255)
+      doc.roundedRect(x, y, larg, 13, 2, 2, 'F')
+      const cor = ultimo ? 255 : 90
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(cor, cor, cor)
+      doc.text(rot, x + larg / 2, y + 4.5, { align: 'center' })
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(ultimo ? 255 : 30, ultimo ? 255 : 30, ultimo ? 255 : 30)
+      doc.text(val, x + larg / 2, y + 10.5, { align: 'center' })
+    })
+    y += 18
+  }
+  doc.setTextColor(40, 40, 40)
+  if (o.nota) { doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(o.nota, 10, y, { maxWidth: w - 20 }) }
+  rodape(doc, `Gerado em ${dataHora(new Date().toISOString())}`)
+  return doc
+}

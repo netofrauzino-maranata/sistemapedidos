@@ -68,7 +68,6 @@ export default function Entrada() {
     if (!itens.length) return setMsg({ tipo: 'erro', texto: 'Adicione os produtos da entrada.' })
     for (const i of itens) {
       if (n(i.quantidade) <= 0) return setMsg({ tipo: 'erro', texto: `Informe a quantidade de ${i.produto.nome}.` })
-      if (i.produto.controla_validade && !i.data_validade) return setMsg({ tipo: 'erro', texto: `Informe a validade de ${i.produto.nome}.` })
     }
     setEnviando(true)
     const { error } = await supabase.rpc('registrar_entrada', {
@@ -123,7 +122,7 @@ export default function Entrada() {
             <Campo rotulo="Quantidade *"><input className="campo" inputMode="decimal" value={i.quantidade} onChange={(e) => atualizar(i.chave, { quantidade: e.target.value })} /></Campo>
             <Campo rotulo="Custo unitário"><input className="campo" inputMode="decimal" value={i.custo_unitario} onChange={(e) => atualizar(i.chave, { custo_unitario: e.target.value })} /></Campo>
             <Campo rotulo="Lote"><input className="campo" value={i.lote} onChange={(e) => atualizar(i.chave, { lote: e.target.value })} placeholder="Nº do lote" /></Campo>
-            <Campo rotulo={'Validade' + (i.produto.controla_validade ? ' *' : '')}><input type="date" className="campo" value={i.data_validade} onChange={(e) => atualizar(i.chave, { data_validade: e.target.value })} /></Campo>
+            <Campo rotulo="Validade (opcional)"><input type="date" className="campo" value={i.data_validade} onChange={(e) => atualizar(i.chave, { data_validade: e.target.value })} /></Campo>
             <p className="col-span-2 text-right text-sm text-stone-500">Subtotal {brl(n(i.quantidade) * n(i.custo_unitario))}</p>
           </section>
         ))}

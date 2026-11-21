@@ -73,6 +73,9 @@ O pedido no celular usa `mapaPrecos()` de `db.ts`. Tela do gestor: Mais > Tabela
 ## Carga do dia
 Tela `/carga` (gestor, `pages/Carga.tsx`): pedidos pendente/confirmado/faturado do dia; o gestor desmarca o que não vai (fica salvo só no celular, localStorage por dia). Relatórios em `lib/carga.ts`: resumo das vendas, itens somados e detalhado por cliente, em PDF (`pdfCarga`), térmica (`cupomCarga`) ou texto. Trocas entram na carga mas não somam no valor.
 
+## Relatórios extras
+`pages/RelatoriosExtras.tsx` (abas em Relatórios): vendas por categoria (grupo e itens), itens zerados, sugestão de compra (média diária x dias + mínimo - saldo; inclui trocas). PDF genérico `pdfRelatorio` em `pdf.ts`. Categorias se organizam em Mais > Categorias de produtos (`pages/Categorias.tsx`, mover produtos em lote). Validade é opcional na entrada.
+
 ## Dados de clientes
 O repositório é público: nunca coloque aqui planilhas, scripts de importação ou qualquer dado de clientes.
 

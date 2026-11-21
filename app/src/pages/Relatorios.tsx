@@ -7,9 +7,10 @@ import { db } from '../lib/db'
 import { brl, data, hojeISO, num } from '../lib/formato'
 import { formasForaDeVenda } from '../lib/db'
 import { nomeCliente } from '../lib/hooks'
+import { ItensZerados, SugestaoCompra, VendasCategoria } from './RelatoriosExtras'
 import { STATUS_LABEL, type StatusPedido } from '../lib/tipos'
 
-type Aba = 'resumo' | 'vendedor' | 'cliente' | 'produto' | 'positivacao'
+type Aba = 'resumo' | 'vendedor' | 'cliente' | 'produto' | 'positivacao' | 'categoria' | 'zerados' | 'compra'
 
 function periodo(chave: string): [string, string] {
   const hoje = new Date()
@@ -96,16 +97,18 @@ export default function Relatorios() {
       cliente: agrupar((p) => p.cliente_id, (k) => nomeCliente(cli.get(k))),
       produto: [...porProduto.values()].sort((a, b) => b.total - a.total),
       positivacao: semCompra,
+      lista,
       perfis,
     }
   }, [ini, fim, vendedor, incluirOrc, gestor, perfil?.id])
 
-  const abas: [Aba, string][] = [['resumo', 'Resumo'], ...(gestor ? [['vendedor', 'Vendedores'] as [Aba, string]] : []), ['cliente', 'Clientes'], ['produto', 'Produtos'], ['positivacao', 'Sem compra']]
-  const linhas: Linha[] = r && aba !== 'resumo' ? r[aba] : []
+  const abas: [Aba, string][] = [['resumo', 'Resumo'], ['categoria', 'Categorias'], ...(gestor ? [['vendedor', 'Vendedores'] as [Aba, string]] : []), ['cliente', 'Clientes'], ['produto', 'Produtos'], ['positivacao', 'Sem compra'], ['zerados', 'Itens zerados'], ...(gestor ? [['compra', 'Sugestão de compra'] as [Aba, string]] : [])]
+  const extra = aba === 'categoria' || aba === 'zerados' || aba === 'compra'
+  const linhas: Linha[] = r && aba !== 'resumo' && !extra ? r[aba] : []
   const maxDia = Math.max(1, ...(r?.porDia.map(([, v]) => v) ?? [1]))
 
   function exportar() {
-    if (!r) return
+    if (!r || extra) return
     const nome = `relatorio-${aba}-${ini}-a-${fim}.csv`
     if (aba === 'resumo') baixarArquivo(gerarCsv(r.porDia.map(([d, v]) => ({ data: data(d), total: Number(v.toFixed(2)) }))), nome)
     else baixarArquivo(gerarCsv(linhas.map((l) => ({ nome: l.nome, pedidos: l.pedidos, quantidade: l.quantidade, total: Number(l.total.toFixed(2)), info: l.extra ?? '' }))), nome)
@@ -113,7 +116,7 @@ export default function Relatorios() {
 
   return (
     <>
-      <Cabecalho titulo="Relatórios" voltar acao={<button className="rounded-full p-2 hover:bg-white/10" onClick={exportar} aria-label="Exportar planilha"><Icone nome="exportar" /></button>} />
+      <Cabecalho titulo="Relatórios" voltar acao={extra ? undefined : <button className="rounded-full p-2 hover:bg-white/10" onClick={exportar} aria-label="Exportar planilha"><Icone nome="exportar" /></button>} />
       <main className="space-y-3 p-4">
         <section className="cartao space-y-3">
           <div className="-mx-1 flex flex-wrap gap-1">
@@ -177,7 +180,11 @@ export default function Relatorios() {
           </>
         )}
 
-        {r && aba !== 'resumo' && (
+        {r && aba === 'categoria' && <VendasCategoria pedidos={r.lista} periodo={`${data(ini)} a ${data(fim)}`} />}
+        {aba === 'zerados' && <ItensZerados />}
+        {aba === 'compra' && <SugestaoCompra />}
+
+        {r && aba !== 'resumo' && !extra && (
           <section className="cartao p-0">
             {!linhas.length && <p className="p-6 text-center text-sm text-stone-500">{aba === 'positivacao' ? 'Todos os clientes compraram no período.' : 'Sem dados no período.'}</p>}
             <ul className="divide-y divide-stone-100">

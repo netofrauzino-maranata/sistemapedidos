@@ -23,6 +23,7 @@ import Usuarios from './pages/Usuarios'
 import TabelasPreco from './pages/TabelasPreco'
 import Impressora from './pages/Impressora'
 import Carga from './pages/Carga'
+import Categorias from './pages/Categorias'
 import EntradasHistorico from './pages/EntradasHistorico'
 
 function SoGestor({ children }: { children: ReactNode }) {
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="config/empresa" element={<SoGestor><Empresa /></SoGestor>} />
         <Route path="config/usuarios" element={<SoGestor><Usuarios /></SoGestor>} />
         <Route path="config/impressora" element={<Impressora />} />
+        <Route path="config/categorias" element={<SoGestor><Categorias /></SoGestor>} />
         <Route path="config/tabelas" element={<SoGestor><TabelasPreco /></SoGestor>} />
         <Route path="config/tabelas/:id" element={<SoGestor><TabelasPreco /></SoGestor>} />
         <Route path="*" element={<Navigate to="/" replace />} />
