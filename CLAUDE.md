@@ -1,0 +1,71 @@
+# Maranata Pedidos — guia para o Claude que for continuar este sistema
+
+Sistema gerencial da **Maranata Distribuidora** (micro distribuidora de alimentos).
+Dono e gestor: Neto. Usuários: gestor e vendedores externos (rua), pelo celular.
+Escrito em português. Responda ao Neto em português, de forma prática.
+
+## O que o sistema faz
+- Cadastro de produtos (com NCM, CEST, EAN, CFOP, unidade, foto) e controle de **lote e validade**
+- Entrada de mercadoria (cria lote, soma estoque, atualiza custo)
+- Clientes (CPF/CNPJ, IE, endereço completo, código IBGE), com busca automática por CNPJ (BrasilAPI) e CEP (ViaCEP)
+- Pedidos de venda **offline**, com baixa automática de estoque pelo lote que vence primeiro (FEFO)
+- PDF do pedido e catálogo em PDF, gerados no próprio celular
+- Relatórios (vendas por dia, vendedor, cliente, produto, positivação)
+- Exportação das vendas para o emissor de NF-e (CSV ou JSON). **Não emite nota.**
+
+## Estrutura
+```
+app/                 PWA (React + Vite + TypeScript + Tailwind 4)
+  src/lib/db.ts      banco local do celular (Dexie/IndexedDB): as telas leem daqui
+  src/lib/sync.ts    sincronização: envia pendentes, baixa o que mudou (atualizado_em)
+  src/lib/pdf.ts     PDF do pedido e do catálogo (jsPDF)
+  src/lib/auth.tsx   sessão, perfil (gestor/vendedor)
+  src/pages/         uma tela por arquivo
+supabase/migrations/ SQL do banco, em ordem. Toda mudança de banco vira um arquivo novo aqui
+supabase/tests/      teste do fluxo de estoque e permissões (rodar num Postgres local)
+netlify.toml         deploy (base app/, SPA redirect)
+```
+
+## Regras de negócio que não podem quebrar
+1. **Estoque é um livro** (`movimentos_estoque`). Saldo = soma dos movimentos. Nunca grave estoque direto.
+   Só estas funções do banco mexem em estoque: `salvar_pedido`, `mudar_status_pedido`, `registrar_entrada`, `ajustar_estoque`.
+2. **Pedido é idempotente**: o id (UUID) nasce no celular. `salvar_pedido` pode ser chamado de novo com o mesmo pedido sem duplicar nem baixar duas vezes (ele estorna e refaz).
+3. Status que baixam estoque: pendente, confirmado, faturado, entregue. Orçamento não baixa. Cancelado devolve.
+4. Venda sem saldo **não trava** (vendedor pode estar offline): gera movimento sem lote e o estoque fica negativo, aparecendo como alerta para o gestor.
+5. Nada é apagado: cadastros têm `ativo`. Toda tabela sincronizada precisa de `atualizado_em` com trigger.
+6. RLS ligado em tudo. Vendedor vê só os clientes dele (ou sem vendedor, ou que ele cadastrou) e só os pedidos dele. Só gestor altera produto, preço, estoque, empresa e usuários.
+7. O primeiro usuário que cria conta vira gestor. Os seguintes entram como vendedor **inativo** e o gestor libera em Mais > Usuários.
+
+## Banco (Supabase)
+- Projeto: `pedidosmarantadistribuidora` (ref `ncailnkooaexdlpnqyrn`), região São Paulo, plano grátis.
+- Para mudar o banco: crie `supabase/migrations/AAAAMMDDHHMMSS_descricao.sql`, teste local, aplique no Supabase e faça commit.
+- Teste local (Postgres 16+):
+  ```
+  createdb teste
+  psql -d teste -f supabase/tests/stub_supabase.sql -f supabase/migrations/*.sql
+  psql -d teste -f supabase/tests/fluxo_estoque.sql   # procure "esperado" e "ok:"
+  ```
+- Visão para NF-e: `vw_exportacao_nfe` (uma linha por item, com dados fiscais de cliente e produto).
+  Para levar vendas ao emissor: filtre por período e `exportado_nfe_em is null`, gere o arquivo no formato do emissor e chame `marcar_exportado_nfe(ids)`.
+
+## Rodar e publicar o app
+```
+cd app
+cp .env.example .env.local   # URL e chave pública (anon) do Supabase
+npm install
+npm run dev                  # http://localhost:5173
+npm run build                # gera app/dist
+```
+Deploy: Netlify conectado ao GitHub, lê `netlify.toml`. Variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` ficam no painel do Netlify.
+Endereço: `pedidos.maranatadistribuidora.com.br` (CNAME no Registro.br apontando para o site do Netlify).
+Play Store (futuro): empacotar a PWA como TWA com Bubblewrap; precisa do arquivo `/.well-known/assetlinks.json` em `app/public`.
+
+## Pendências conhecidas
+- Vendedor consegue ler `preco_custo` (vem junto no select de produtos). Se o Neto quiser esconder custo, mover para tabela só do gestor.
+- Formato exato de importação do emissor de NF-e do Neto ainda não definido (hoje exporta CSV genérico e JSON).
+- Relatórios do app antigo (vendasmobile) ainda serão enviados para replicar.
+- Tabela de preços por cliente e comissão de vendedor não existem ainda.
+
+## Identidade visual
+Verde escuro `#14532D` (marca), âmbar `#F59E0B` (destaque), fundo creme `#FBF7EF`. Ícone em `app/public/favicon.svg`.
+Fluxos inspirados no app que o Neto usava, mas visual próprio da Maranata.
