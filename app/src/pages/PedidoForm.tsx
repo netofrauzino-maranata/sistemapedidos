@@ -130,7 +130,7 @@ export default function PedidoForm() {
     if (solicitacao) {
       // marca o pedido do catálogo como aprovado; liga ao pedido depois que ele chega no servidor
       void supabase.from('pedidos_catalogo').update({ status: 'aprovada' }).eq('id', solicitacao.id).then(() =>
-        sincronizar().then(() => supabase.from('pedidos_catalogo').update({ pedido_id: pedido.id }).eq('id', solicitacao.id)))
+        sincronizar().then(() => supabase.from('pedidos_catalogo').update({ pedido_id: pedido.id, cliente_id: pedido.cliente_id }).eq('id', solicitacao.id)))
     } else void sincronizar()
     nav(`/pedidos/${pedido.id}`, { replace: true })
   }

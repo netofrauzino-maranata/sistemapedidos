@@ -8,13 +8,14 @@ import { supabase } from '../lib/supabase'
 // O cliente escolhe as quantidades e envia; chega para a Maranata aprovar.
 
 interface ProdutoCat { id: string; codigo: string; nome: string; unidade: string; qtd_embalagem: number; marca: string | null; foto_url: string | null; categoria: string | null; preco: number }
-interface DadosCat { cliente: string; empresa: { nome: string; telefone: string | null; whatsapp: string | null } | null; produtos: ProdutoCat[] }
+interface DadosCat { cliente: string | null; empresa: { nome: string; telefone: string | null; whatsapp: string | null } | null; produtos: ProdutoCat[] }
 
 const OUTROS = 'Outros'
 
 export default function CatalogoCliente() {
   const { token = '' } = useParams()
-  const chave = `maranata-carrinho-${token}`
+  const geral = !token // link único (/loja): preço padrão, pede nome e celular
+  const chave = `maranata-carrinho-${token || 'loja'}`
   const [dados, setDados] = useState<DadosCat | null>(null)
   const [erro, setErro] = useState('')
   const [carrinho, setCarrinho] = useState<Record<string, number>>(() => {
@@ -23,19 +24,21 @@ export default function CatalogoCliente() {
   const [cat, setCat] = useState('')
   const [q, setQ] = useState('')
   const [revisando, setRevisando] = useState(false)
-  const [contato, setContato] = useState('')
+  const [contato, setContato] = useState(() => { try { return localStorage.getItem('maranata-loja-nome') ?? '' } catch { return '' } })
+  const [celular, setCelular] = useState(() => { try { return localStorage.getItem('maranata-loja-celular') ?? '' } catch { return '' } })
   const [obs, setObs] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState<{ numero: number; itens: number; total: number } | null>(null)
 
   useEffect(() => {
     document.title = 'Catálogo Maranata'
-    void supabase.rpc('catalogo_publico', { p_token: token }).then(({ data, error }) => {
+    const req = geral ? supabase.rpc('catalogo_geral') : supabase.rpc('catalogo_publico', { p_token: token })
+    void req.then(({ data, error }) => {
       if (error) return setErro('Não foi possível abrir o catálogo. Confira sua internet e tente de novo.')
       if (!data) return setErro('Este link não é válido ou foi desativado. Peça um novo link à Maranata.')
       setDados(data as DadosCat)
     })
-  }, [token])
+  }, [token, geral])
 
   useEffect(() => {
     try { localStorage.setItem(chave, JSON.stringify(carrinho)) } catch { /* sem armazenamento */ }
@@ -61,10 +64,17 @@ export default function CatalogoCliente() {
   const grupos = categorias.map((c) => ({ c, ps: visiveis.filter((p) => (p.categoria ?? OUTROS) === c) })).filter((g) => g.ps.length)
 
   async function enviar() {
+    const lista = itens.map((i) => ({ produto_id: i.p.id, quantidade: i.q }))
+    if (geral) {
+      if (contato.trim().length < 2) return alert('Informe seu nome.')
+      const d = celular.replace(/\D/g, '')
+      if (d.length < 10 || d.length > 13) return alert('Informe seu celular com DDD.')
+      try { localStorage.setItem('maranata-loja-nome', contato.trim()); localStorage.setItem('maranata-loja-celular', celular) } catch { /* sem armazenamento */ }
+    }
     setEnviando(true); setErro('')
-    const { data, error } = await supabase.rpc('enviar_pedido_catalogo', {
-      p_token: token, p_itens: itens.map((i) => ({ produto_id: i.p.id, quantidade: i.q })), p_contato: contato, p_observacao: obs,
-    })
+    const { data, error } = geral
+      ? await supabase.rpc('enviar_pedido_catalogo_geral', { p_itens: lista, p_nome: contato, p_celular: celular, p_observacao: obs })
+      : await supabase.rpc('enviar_pedido_catalogo', { p_token: token, p_itens: lista, p_contato: contato, p_observacao: obs })
     setEnviando(false)
     if (error) return alert(error.message || 'Não foi possível enviar. Tente de novo.')
     setEnviado(data as { numero: number; itens: number; total: number })
@@ -74,7 +84,7 @@ export default function CatalogoCliente() {
   if (enviado) {
     const zap = (dados.empresa?.whatsapp || dados.empresa?.telefone || '').replace(/\D/g, '')
     return (
-      <Tela nome={dados.cliente}>
+      <Tela nome={dados.cliente ?? undefined}>
         <section className="cartao space-y-3 text-center">
           <img src="/mascote.png" alt="" className="mx-auto h-28" />
           <h1 className="text-xl font-extrabold text-marca-700">Pedido enviado!</h1>
@@ -93,8 +103,8 @@ export default function CatalogoCliente() {
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <img src="/logo.png" alt="Maranata" className="h-12" />
           <div className="min-w-0">
-            <p className="text-xs text-marca-100">Catálogo de</p>
-            <p className="truncate font-bold">{dados.cliente}</p>
+            <p className="text-xs text-marca-100">{dados.cliente ? 'Catálogo de' : 'Catálogo'}</p>
+            <p className="truncate font-bold">{dados.cliente ?? dados.empresa?.nome ?? 'Maranata Distribuidora'}</p>
           </div>
         </div>
       </header>
@@ -188,7 +198,8 @@ export default function CatalogoCliente() {
             </ul>
             <div className="mt-2 flex justify-between border-t border-stone-200 pt-2 text-lg font-extrabold"><span>Total estimado</span><span className="text-marca-700">{brl(total)}</span></div>
             <div className="mt-3 space-y-2">
-              <input className="campo" placeholder="Seu nome (opcional)" value={contato} onChange={(e) => setContato(e.target.value)} />
+              <input className="campo" placeholder={geral ? 'Seu nome ou nome do comércio *' : 'Seu nome (opcional)'} value={contato} onChange={(e) => setContato(e.target.value)} />
+              {geral && <input className="campo" placeholder="Celular com DDD *" inputMode="tel" value={celular} onChange={(e) => setCelular(e.target.value)} />}
               <textarea className="campo" rows={2} placeholder="Observação (opcional): melhor dia de entrega, etc." value={obs} onChange={(e) => setObs(e.target.value)} />
               <button className="btn-primario w-full" disabled={enviando || !itens.length} onClick={() => void enviar()}>{enviando ? 'Enviando...' : 'Enviar pedido'}</button>
               <p className="text-center text-xs text-stone-500">A Maranata confere e confirma antes de separar.</p>

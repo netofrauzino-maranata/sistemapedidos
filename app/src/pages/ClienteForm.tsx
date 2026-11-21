@@ -38,8 +38,8 @@ export default function ClienteForm() {
 
   useEffect(() => {
     if (id) void db.clientes.get(id).then((x) => (x ? setC(x) : nav('/clientes', { replace: true })))
-    else setC(vazio(gestor ? null : perfil?.id ?? null))
-  }, [id, gestor, perfil?.id, nav])
+    else setC({ ...vazio(gestor ? null : perfil?.id ?? null), razao_social: params.get('nome') ?? '', whatsapp: params.get('fone') || null })
+  }, [id, gestor, perfil?.id, nav, params])
 
   const pedidos = useLiveQuery(() => (id ? db.pedidos.where('cliente_id').equals(id).reverse().sortBy('data_pedido') : []), [id]) ?? []
 
@@ -276,11 +276,11 @@ function CatalogoOnline({ c, onToken }: { c: Cliente; onToken: (t: string) => vo
 
   return (
     <section className="cartao space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Catálogo online</p>
-      <p className="text-sm text-stone-600">Mande o link e o cliente escolhe os itens com os preços dele. O pedido chega em Mais &gt; Pedidos do catálogo online.</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Link exclusivo deste cliente</p>
+      <p className="text-sm text-stone-600">Opcional: já abre com os preços da tabela dele e o pedido chega vinculado. O link geral, para todos, fica em Mais &gt; Catálogo online.</p>
       {!token ? <p className="text-sm text-stone-500">Precisa de internet para buscar o link.</p> : (
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" className="btn-primario col-span-2" onClick={() => void enviar()}><Icone nome="whatsapp" /> Enviar catálogo{fone ? ' no WhatsApp' : ''}</button>
+          <button type="button" className="btn-primario col-span-2" onClick={() => void enviar()}><Icone nome="whatsapp" /> Enviar link exclusivo{fone ? ' no WhatsApp' : ''}</button>
           <button type="button" className="btn-secundario" onClick={() => void copiar()}>Copiar link</button>
           <a className="btn-secundario" href={link} target="_blank" rel="noreferrer">Ver como cliente</a>
           <button type="button" className="col-span-2 text-xs text-stone-500 underline" onClick={() => void novo()}>Gerar link novo (desativa o antigo)</button>

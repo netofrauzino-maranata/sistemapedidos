@@ -13,7 +13,7 @@ export default function Mais() {
     ['/estoque', 'Estoque e validades', 'estoque', true],
     ['/estoque/entrada', 'Entrada de mercadoria', 'entrada', true],
     ['/estoque/entradas', 'Histórico de entradas', 'livro', true],
-    ['/catalogo-pedidos', 'Pedidos do catálogo online', 'pedido', false],
+    ['/catalogo-pedidos', 'Catálogo online (link e pedidos)', 'pedido', false],
     ['/catalogo', 'Catálogo em PDF', 'livro', false],
     ['/config/impressora', 'Impressora Bluetooth', 'impressora', false],
     ['/relatorios', 'Relatórios', 'grafico', false],

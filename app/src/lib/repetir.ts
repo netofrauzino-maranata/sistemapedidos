@@ -40,17 +40,18 @@ export async function repetirPedido(p: Pedido): Promise<boolean> {
 export const CHAVE_SOLICITACAO = 'maranata-rascunho-catalogo' // {id, numero} do pedido do catálogo
 
 export interface PedidoCatalogo {
-  id: string; numero: number; cliente_id: string; total_estimado: number; contato: string | null; observacao: string | null
+  id: string; numero: number; cliente_id: string | null; total_estimado: number; contato: string | null; celular: string | null; observacao: string | null
   status: 'nova' | 'aprovada' | 'recusada'; pedido_id: string | null; criado_em: string
   itens: { produto_id: string; quantidade: number; preco: number }[]
 }
 
-export async function rascunhoDoCatalogo(s: PedidoCatalogo): Promise<boolean> {
+// clienteId: cliente escolhido pelo gestor (link único) ou o do link; null = cliente novo, escolhido depois
+export async function rascunhoDoCatalogo(s: PedidoCatalogo, clienteId: string | null = s.cliente_id): Promise<boolean> {
   try {
     const atual = JSON.parse(localStorage.getItem(CHAVE_RASCUNHO) ?? 'null') as { itens?: unknown[] } | null
     if (atual?.itens?.length && !confirm('Você tem um pedido em andamento. Substituir por este pedido do catálogo?')) return false
   } catch { /* rascunho inválido: segue */ }
-  const cliente = await db.clientes.get(s.cliente_id)
+  const cliente = clienteId ? await db.clientes.get(clienteId) : undefined
   const precos = await mapaPrecos(cliente?.tabela_preco_id)
   const produtos = new Map((await db.produtos.bulkGet(s.itens.map((i) => i.produto_id))).filter(Boolean).map((x) => [x!.id, x!]))
   const itens = s.itens.flatMap((i) => {
@@ -59,9 +60,9 @@ export async function rascunhoDoCatalogo(s: PedidoCatalogo): Promise<boolean> {
     const preco = precos.get(prod.id) ?? prod.preco_venda
     return [{ id: uuid(), produto_id: prod.id, quantidade: Number(i.quantidade), preco_unitario: preco, desconto: 0, total: arred(Number(i.quantidade) * preco), produto_nome: prod.nome, produto_codigo: prod.codigo, unidade: prod.unidade }]
   })
-  const obs = [`Pedido do catálogo nº ${s.numero}${s.contato ? ` (${s.contato})` : ''}`, s.observacao].filter(Boolean).join('. ')
+  const obs = [`Pedido do catálogo nº ${s.numero}${s.contato ? ` (${s.contato}${s.celular ? ' ' + s.celular : ''})` : ''}`, s.observacao].filter(Boolean).join('. ')
   localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify({
-    id: uuid(), cliente_id: s.cliente_id, status: 'pendente', data_pedido: new Date().toISOString(), data_entrega: null,
+    id: uuid(), cliente_id: clienteId ?? '', status: 'pendente', data_pedido: new Date().toISOString(), data_entrega: null,
     condicao_pagamento_id: cliente?.condicao_pagamento_id ?? null, forma_pagamento_id: cliente?.forma_pagamento_id ?? null,
     desconto: 0, frete: 0, observacao: obs, itens,
   }))

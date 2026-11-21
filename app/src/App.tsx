@@ -46,7 +46,9 @@ export default function App() {
     )
   }
   // catálogo online do cliente: público, sem login
-  if (local.pathname.startsWith('/c/')) return <Routes><Route path="/c/:token" element={<CatalogoCliente />} /></Routes>
+  if (local.pathname.startsWith('/c/') || local.pathname === '/loja') {
+    return <Routes><Route path="/c/:token" element={<CatalogoCliente />} /><Route path="/loja" element={<CatalogoCliente />} /></Routes>
+  }
   if (carregando) return <div className="flex h-full items-center justify-center text-marca-700">Carregando...</div>
   if (!session) return <Login />
   if (perfil && !perfil.ativo) return <AguardandoLiberacao />

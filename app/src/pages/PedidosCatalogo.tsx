@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { Cliente } from '../lib/tipos'
 import { Link, useNavigate } from 'react-router-dom'
-import { Aviso, Cabecalho, Icone, Vazio } from '../components/ui'
-import { brl, dataHora, num } from '../lib/formato'
+import { Aviso, Busca, Cabecalho, Folha, Icone, Vazio } from '../components/ui'
+import { brl, dataHora, foneFormatado, normalizar, num, soDigitos } from '../lib/formato'
 import { nomeCliente, useClientesMapa, useProdutosMapa } from '../lib/hooks'
 import { rascunhoDoCatalogo, type PedidoCatalogo } from '../lib/repetir'
 import { supabase } from '../lib/supabase'
@@ -18,6 +19,7 @@ export default function PedidosCatalogo() {
   const [lista, setLista] = useState<PedidoCatalogo[] | null>(null)
   const [erro, setErro] = useState('')
   const [aberto, setAberto] = useState<string | null>(null)
+  const [vincular, setVincular] = useState<PedidoCatalogo | null>(null)
   const clientes = useClientesMapa()
   const produtos = useProdutosMapa()
 
@@ -31,9 +33,16 @@ export default function PedidosCatalogo() {
   }, [aba])
   useEffect(() => { setLista(null); carregar() }, [carregar])
 
-  async function aprovar(s: PedidoCatalogo) {
-    if (!clientes.get(s.cliente_id)) return setErro('Cliente ainda não está neste aparelho. Sincronize e tente de novo.')
-    if (await rascunhoDoCatalogo(s)) nav('/pedidos/novo')
+  async function aprovar(s: PedidoCatalogo, clienteId?: string | null) {
+    if (clienteId === undefined) {
+      if (!s.cliente_id) return setVincular(s) // link único: escolher o cliente
+      if (!clientes.get(s.cliente_id)) return setErro('Cliente ainda não está neste aparelho. Sincronize e tente de novo.')
+      clienteId = s.cliente_id
+    }
+    if (!(await rascunhoDoCatalogo(s, clienteId))) return
+    if (clienteId) return nav('/pedidos/novo')
+    // cliente novo: abre o cadastro já com nome e celular e volta para o pedido
+    nav(`/clientes/novo?voltar=pedido&nome=${encodeURIComponent(s.contato ?? '')}&fone=${encodeURIComponent(s.celular ?? '')}`)
   }
   async function recusar(s: PedidoCatalogo) {
     if (!confirm(`Recusar o pedido do catálogo nº ${s.numero}?`)) return
@@ -52,7 +61,7 @@ export default function PedidosCatalogo() {
       <Cabecalho titulo="Pedidos do catálogo" voltar="/mais"
         acao={<button className="rounded-full p-2 hover:bg-white/10" aria-label="Atualizar" onClick={carregar}><Icone nome="sync" /></button>} />
       <main className="space-y-3 p-4">
-        <p className="text-sm text-stone-600">Pedidos que os clientes mandaram pelo link do catálogo. Para mandar o link, abra o cliente e toque em <b>Enviar catálogo</b>.</p>
+        <LinkUnico />
         <div className="grid grid-cols-3 overflow-hidden rounded-xl ring-1 ring-stone-300">
           {ABAS.map(([k, n]) => (
             <button key={k} onClick={() => setAba(k)} className={'py-2 text-sm font-bold ' + (aba === k ? 'bg-marca-700 text-white' : 'bg-white text-stone-600')}>{n}</button>
@@ -62,16 +71,17 @@ export default function PedidosCatalogo() {
         {!lista && !erro && <p className="text-center text-sm text-stone-500">Carregando...</p>}
         {lista && !lista.length && <Vazio texto={aba === 'nova' ? 'Nenhum pedido novo do catálogo.' : 'Nada aqui.'} />}
         {lista?.map((s) => {
-          const c = clientes.get(s.cliente_id)
+          const c = (s.cliente_id ? clientes.get(s.cliente_id) : undefined)
           const abrir = aberto === s.id
           const unidades = s.itens.reduce((t, i) => t + Number(i.quantidade), 0)
           return (
             <section key={s.id} className="cartao p-0">
               <button className="flex w-full items-center gap-3 px-4 py-3 text-left" onClick={() => setAberto(abrir ? null : s.id)}>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{c ? nomeCliente(c) : 'Cliente'}</p>
+                  <p className="truncate font-semibold">{c ? nomeCliente(c) : s.contato || 'Cliente'}</p>
+                  {!s.cliente_id && <p className="text-xs font-semibold text-amber-700">Link único{s.celular ? ` · ${foneFormatado(s.celular)}` : ''}</p>}
                   <p className="text-xs text-stone-500">Nº {s.numero} · {dataHora(s.criado_em)} · {s.itens.length} produto(s), {num(unidades)} un.</p>
-                  {s.contato && <p className="text-xs text-stone-500">Enviado por {s.contato}</p>}
+                  {s.contato && s.cliente_id && <p className="text-xs text-stone-500">Enviado por {s.contato}</p>}
                 </div>
                 <div className="text-right">
                   <p className="font-bold">{brl(s.total_estimado)}</p>
@@ -96,7 +106,7 @@ export default function PedidosCatalogo() {
                   {s.status === 'nova' && (
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <button className="btn-perigo" onClick={() => void recusar(s)}>Recusar</button>
-                      <button className="btn-primario" onClick={() => void aprovar(s)}><Icone nome="ok" /> Gerar pedido</button>
+                      <button className="btn-primario" onClick={() => void aprovar(s)}><Icone nome="ok" /> {s.cliente_id ? 'Gerar pedido' : 'Escolher cliente'}</button>
                     </div>
                   )}
                   {s.status === 'aprovada' && s.pedido_id && <Link to={`/pedidos/${s.pedido_id}`} className="btn-secundario w-full">Abrir pedido de venda</Link>}
@@ -107,6 +117,59 @@ export default function PedidosCatalogo() {
           )
         })}
       </main>
+      <EscolherCliente s={vincular} clientes={[...clientes.values()]} onFechar={() => setVincular(null)}
+        onEscolher={(id) => { const s = vincular!; setVincular(null); void aprovar(s, id) }} />
     </>
+  )
+}
+
+// Link único do catálogo: o mesmo para todos os clientes.
+function LinkUnico() {
+  const [msg, setMsg] = useState('')
+  const link = `${location.origin}/loja`
+  const texto = `Olá! Este é o catálogo da Maranata Distribuidora. Escolha os produtos e as quantidades e toque em Enviar pedido: ${link}`
+  async function copiar() { try { await navigator.clipboard.writeText(link); setMsg('Link copiado.') } catch { setMsg(link) } }
+  async function compartilhar() {
+    if (navigator.share) { try { await navigator.share({ text: texto }); return } catch { return } }
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank')
+  }
+  return (
+    <section className="cartao space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Link do catálogo</p>
+      <p className="break-all rounded-lg bg-marca-50 px-3 py-2 text-sm font-semibold text-marca-800">{link}</p>
+      <div className="grid grid-cols-3 gap-2">
+        <button className="btn-primario px-2" onClick={() => void compartilhar()}><Icone nome="whatsapp" /> Enviar</button>
+        <button className="btn-secundario px-2" onClick={() => void copiar()}>Copiar</button>
+        <a className="btn-secundario px-2" href={link} target="_blank" rel="noreferrer">Abrir</a>
+      </div>
+      <p className="text-xs text-stone-500">O mesmo link para todos. A pessoa informa nome e celular, e você escolhe o cliente na hora de gerar o pedido. Mostra o preço padrão.{msg ? ` ${msg}` : ''}</p>
+    </section>
+  )
+}
+
+function EscolherCliente({ s, clientes, onFechar, onEscolher }: { s: PedidoCatalogo | null; clientes: Cliente[]; onFechar: () => void; onEscolher: (id: string | null) => void }) {
+  const [q, setQ] = useState('')
+  if (!s) return null
+  const cel = soDigitos(s.celular).replace(/^55/, '')
+  const fim = cel.slice(-8)
+  const sugeridos = fim.length === 8 ? clientes.filter((c) => c.ativo && [c.whatsapp, c.telefone].some((f) => soDigitos(f).endsWith(fim))) : []
+  const t = normalizar(q)
+  const lista = t ? clientes.filter((c) => c.ativo && normalizar(`${c.codigo ?? ''} ${c.razao_social} ${c.nome_fantasia ?? ''} ${c.cidade ?? ''} ${soDigitos(c.whatsapp)} ${soDigitos(c.telefone)}`).includes(t)).slice(0, 40) : []
+  const Item = ({ c }: { c: Cliente }) => (
+    <li><button className="w-full py-2.5 text-left" onClick={() => onEscolher(c.id)}>
+      <b>{nomeCliente(c)}</b> <span className="text-xs text-stone-500">{c.codigo ? `${c.codigo} · ` : ''}{c.cidade ?? ''} · {foneFormatado(c.whatsapp || c.telefone)}</span>
+    </button></li>
+  )
+  return (
+    <Folha aberta onFechar={onFechar} titulo="Qual cliente é?">
+      <p className="mb-2 text-sm text-stone-600">Enviado por <b>{s.contato}</b>{s.celular ? <> · {foneFormatado(s.celular)}</> : null}. O pedido usa a tabela de preço do cliente escolhido.</p>
+      {!!sugeridos.length && <>
+        <p className="text-xs font-semibold uppercase text-emerald-700">Mesmo celular</p>
+        <ul className="mb-2 divide-y divide-stone-100">{sugeridos.map((c) => <Item key={c.id} c={c} />)}</ul>
+      </>}
+      <Busca valor={q} onChange={setQ} placeholder="Buscar cliente" autoFocus={!sugeridos.length} />
+      <ul className="mt-1 divide-y divide-stone-100">{lista.map((c) => <Item key={c.id} c={c} />)}</ul>
+      <button className="btn-secundario mt-3 w-full" onClick={() => onEscolher(null)}><Icone nome="mais" /> É cliente novo: cadastrar</button>
+    </Folha>
   )
 }
