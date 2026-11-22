@@ -24,8 +24,11 @@ type Linha = Record<string, string | number | null> & {
   exportado_nfe_em: string | null; status: string; item: number
 }
 
+// Nome com que a função foi publicada no Supabase (o painel deu o nome "super-service")
+const FUNCAO_VE = 'super-service'
+
 async function chamar(corpo: Record<string, unknown>) {
-  const { data: d, error } = await supabase.functions.invoke('vendasexternas', { body: corpo })
+  const { data: d, error } = await supabase.functions.invoke(FUNCAO_VE, { body: corpo })
   if (error) {
     // tenta ler a mensagem que a função devolveu
     const ctx = (error as { context?: Response }).context
