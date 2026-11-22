@@ -57,6 +57,7 @@ npm run dev                  # http://localhost:5173
 npm run build                # gera app/dist
 ```
 Deploy: Netlify conectado ao GitHub, lê `netlify.toml`. O repositório é público de propósito: o Netlify grátis bloqueia build de repo privado quando o autor do commit não é membro da conta (commits do Claude). Não há segredo no código; a chave em `app/.env.production` é a pública. Variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` ficam no painel do Netlify.
+Netlify: Production branch = `main` (cada deploy de produção gasta créditos; sem créditos, produção pausa). A prévia é branch deploy do ramo de trabalho e não gasta crédito. Se a prévia não atualizar, confira em Build & deploy > Branches and deploy contexts se o ramo de trabalho não virou Production.
 Endereço: `pedidos.maranatadistribuidora.com.br` (CNAME no Registro.br apontando para o site do Netlify).
 Play Store (futuro): empacotar a PWA como TWA com Bubblewrap; precisa do arquivo `/.well-known/assetlinks.json` em `app/public`.
 
