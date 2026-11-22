@@ -10,12 +10,13 @@ import { useCategorias } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
 import { sincronizar } from '../lib/sync'
 import { UNIDADES, type Produto } from '../lib/tipos'
+import { fotoDoProduto } from '../lib/fotos'
 
 function vazio(): Produto {
   return {
     id: uuid(), codigo: '', nome: '', descricao: null, categoria_id: null, marca: null, unidade: 'UN', qtd_embalagem: 1,
     peso_kg: null, gtin: null, ncm: null, cest: null, origem: 0, cfop_padrao: '5102', preco_venda: 0, preco_minimo: null,
-    preco_custo: null, estoque_minimo: 0, controla_validade: true, foto_url: null, mostrar_catalogo: true, ativo: true, atualizado_em: '',
+    preco_custo: null, estoque_minimo: 0, controla_validade: false, foto_url: null, mostrar_catalogo: true, ativo: true, atualizado_em: '',
   }
 }
 
@@ -109,7 +110,7 @@ export default function ProdutoForm() {
 
         <section className="cartao flex gap-3">
           <label className={'relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-marca-50 ' + (gestor ? 'cursor-pointer' : '')}>
-            {p.foto_url ? <img src={p.foto_url} alt="" className="h-full w-full object-cover" /> : <Icone nome="produto" className="h-8 w-8 text-marca-200" />}
+            {fotoDoProduto(p) ? <img src={fotoDoProduto(p)!} alt="" className="h-full w-full object-cover" /> : <Icone nome="produto" className="h-8 w-8 text-marca-200" />}
             {gestor && <input type="file" accept="image/*" className="hidden" onChange={(e) => void enviarFoto(e.target.files?.[0])} />}
             {gestor && <span className="absolute bottom-0 inset-x-0 bg-black/40 text-center text-[10px] text-white">Foto</span>}
           </label>

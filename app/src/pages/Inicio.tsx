@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Cabecalho, Icone } from '../components/ui'
 import { IndicadorSync, useEstadoSync } from '../components/Layout'
@@ -6,6 +7,7 @@ import { useAuth } from '../lib/auth'
 import { db, formasForaDeVenda } from '../lib/db'
 import { brl, dataHora, hojeISO } from '../lib/formato'
 import { nomeCliente, useClientesMapa } from '../lib/hooks'
+import { supabase } from '../lib/supabase'
 import { STATUS_COR, STATUS_LABEL } from '../lib/tipos'
 
 export default function Inicio() {
@@ -13,6 +15,11 @@ export default function Inicio() {
   const sync = useEstadoSync()
   const clientes = useClientesMapa()
   const hoje = hojeISO()
+  const [doCatalogo, setDoCatalogo] = useState(0)
+  useEffect(() => {
+    void supabase.from('pedidos_catalogo').select('id', { count: 'exact', head: true }).eq('status', 'nova')
+      .then(({ count }) => setDoCatalogo(count ?? 0))
+  }, [])
   const mes = hoje.slice(0, 7)
 
   const resumo = useLiveQuery(async () => {
@@ -57,6 +64,14 @@ export default function Inicio() {
           </div>
         </div>
 
+        {doCatalogo > 0 && (
+          <Link to="/catalogo-pedidos" className="cartao flex items-center gap-3 bg-destaque p-3 font-bold text-stone-900 ring-0">
+            <Icone nome="pedido" className="h-6 w-6" />
+            <span className="flex-1">{doCatalogo} pedido(s) novo(s) pelo catálogo online</span>
+            <Icone nome="voltar" className="h-4 w-4 rotate-180" />
+          </Link>
+        )}
+
         <div className="grid grid-cols-3 gap-2">
           <Link to="/pedidos/novo" className="cartao flex flex-col items-center gap-1 bg-destaque p-3 text-center text-sm font-bold text-stone-900 ring-0">
             <Icone nome="mais" className="h-6 w-6" />Novo pedido
@@ -64,9 +79,15 @@ export default function Inicio() {
           <Link to="/clientes/novo" className="cartao flex flex-col items-center gap-1 p-3 text-center text-sm font-semibold">
             <Icone nome="cliente" className="h-6 w-6 text-marca-600" />Novo cliente
           </Link>
-          <Link to="/catalogo" className="cartao flex flex-col items-center gap-1 p-3 text-center text-sm font-semibold">
-            <Icone nome="livro" className="h-6 w-6 text-marca-600" />Catálogo
-          </Link>
+          {gestor ? (
+            <Link to="/carga" className="cartao flex flex-col items-center gap-1 p-3 text-center text-sm font-semibold">
+              <Icone nome="caminhao" className="h-6 w-6 text-marca-600" />Carga
+            </Link>
+          ) : (
+            <Link to="/catalogo" className="cartao flex flex-col items-center gap-1 p-3 text-center text-sm font-semibold">
+              <Icone nome="livro" className="h-6 w-6 text-marca-600" />Catálogo
+            </Link>
+          )}
         </div>
 
         {gestor && alertas && (alertas.baixo > 0 || alertas.vencendo > 0 || (resumo?.aConfirmar ?? 0) > 0) && (

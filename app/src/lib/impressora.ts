@@ -6,6 +6,7 @@
 // A configuração fica guardada no próprio celular.
 import { data, dataHora, docFormatado, foneFormatado } from './formato'
 import type { Cliente, CondicaoPagamento, Empresa, FormaPagamento, Pedido, Perfil } from './tipos'
+import { NOME_RELATORIO, porCliente, rotuloCliente, somarItens, totaisCarga, type DadosCarga, type TipoRelatorioCarga } from './carga'
 
 export interface ConfigImpressora {
   modo: 'rawbt' | 'bluetooth'
@@ -262,4 +263,42 @@ export async function imprimir(bytes: Uint8Array, cfg: ConfigImpressora) {
     } catch (e) { caracteristica = null; throw e }
     await new Promise((r) => setTimeout(r, 20))
   }
+}
+
+// ---------- Carga do dia (térmica) ----------
+export function cupomCarga(tipo: TipoRelatorioCarga, d: DadosCarga, cfg: ConfigImpressora): Uint8Array {
+  const c = new Cupom(cfg.largura === 58 ? 32 : 48)
+  const t = totaisCarga(d)
+  c.centro().negrito().alto().linha(d.titulo.toUpperCase()).alto(false).linha(NOME_RELATORIO[tipo].toUpperCase()).negrito(false).centro(false)
+  c.linha('Impresso:' + dataHora(new Date().toISOString()))
+  c.separador()
+  if (tipo === 'resumo') {
+    c.linha('QTD  UN  CODIGO DESCRICAO')
+    c.separador()
+    for (const i of somarItens(d.pedidos)) c.quebrado(`${qtdTxt(i.quantidade).padStart(4)} ${i.unidade.toLowerCase().padEnd(3)} ${i.codigo} ${i.nome}`)
+  } else if (tipo === 'vendas') {
+    for (const p of d.pedidos) {
+      const f = p.forma_pagamento_id ? d.formas.get(p.forma_pagamento_id)?.nome ?? '' : ''
+      c.par(rotuloCliente(d.clientes.get(p.cliente_id)), 'R$ ' + reais(p.total))
+      c.linha(`  ${f} #${p.numero ?? '-'}`)
+    }
+  } else {
+    for (const g of porCliente(d)) {
+      c.negrito(); c.quebrado(rotuloCliente(g.cliente)); c.negrito(false)
+      c.linha('  Pedido(s) ' + g.pedidos.map((p) => '#' + (p.numero ?? '-')).join(', '))
+      for (const p of g.pedidos) for (const i of p.itens) c.quebrado(`${qtdTxt(i.quantidade).padStart(4)} ${(i.unidade ?? '').toLowerCase().padEnd(3)} ${i.produto_codigo ?? ''} ${i.produto_nome ?? ''}`)
+      c.direita('Total R$ ' + reais(g.pedidos.reduce((s, p) => s + Number(p.total), 0)))
+      c.separador('.')
+    }
+  }
+  c.separador()
+  c.par('Vendas', String(t.vendas))
+  if (t.trocas) c.par('Trocas', String(t.trocas))
+  c.par('Clientes', String(t.clientes))
+  c.par('Itens', String(t.itens))
+  c.par('Volumes', qtdTxt(t.volumes))
+  c.negrito().par('Vlr. vendas', 'R$ ' + reais(t.valor)).negrito(false)
+  for (let k = 0; k < Math.max(0, cfg.avancar); k++) c.linha()
+  c.raw(0x1d, 0x56, 0x42, 0)
+  return c.bytes()
 }

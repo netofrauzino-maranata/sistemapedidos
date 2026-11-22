@@ -105,6 +105,7 @@ export interface Cliente {
   condicao_pagamento_id: string | null
   forma_pagamento_id: string | null
   tabela_preco_id?: string | null
+  link_token?: string // link do catálogo online (/c/token)
   limite_credito: number | null
   observacao: string | null
   ativo: boolean

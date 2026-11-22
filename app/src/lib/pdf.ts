@@ -5,9 +5,10 @@ import type { Categoria, Cliente, CondicaoPagamento, Empresa, FormaPagamento, Pe
 import { STATUS_LABEL } from './tipos'
 import logoPdf from '../assets/logo-pdf.jpg?inline'
 import { modulosEan } from './codigobarras'
+import { NOME_RELATORIO, porCliente, rotuloCliente, somarItens, totaisCarga, type DadosCarga, type TipoRelatorioCarga } from './carga'
 
 // PDFs gerados no próprio celular (funciona offline).
-const AZUL: [number, number, number] = [0, 38, 139]
+const AZUL: [number, number, number] = [30, 91, 198] // mesmo azul do app (#1E5BC6)
 const AMARELO: [number, number, number] = [255, 210, 0]
 const VERMELHO: [number, number, number] = [227, 6, 19]
 
@@ -205,7 +206,12 @@ export function pdfCatalogo({ produtos, categorias, empresa, mostrarPreco, titul
       const foto = fotos?.get(p.id)
       if (fotos?.size) {
         if (foto) {
-          try { doc.addImage(foto, x + 2, y + 2, cw - 4, 32, undefined, 'FAST') } catch { /* imagem inválida */ }
+          try {
+            // mantém a proporção da foto, centralizada no espaço do cartão
+            const ip = doc.getImageProperties(foto), bw = cw - 4, bh = 32
+            const k = Math.min(bw / ip.width, bh / ip.height), iw = ip.width * k, ih = ip.height * k
+            doc.addImage(foto, x + 2 + (bw - iw) / 2, y + 2 + (bh - ih) / 2, iw, ih, undefined, 'FAST')
+          } catch { /* imagem inválida */ }
         } else {
           doc.setFillColor(244, 248, 245); doc.rect(x + 2, y + 2, cw - 4, 32, 'F')
         }
@@ -245,4 +251,170 @@ export function abrirPdf(doc: jsPDF) {
   const url = URL.createObjectURL(doc.output('blob'))
   window.open(url, '_blank')
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+// ---------- Carga do dia ----------
+export function pdfCarga(tipo: TipoRelatorioCarga, d: DadosCarga) {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const w = doc.internal.pageSize.getWidth()
+  cabecalho(doc, d.empresa, d.titulo.toUpperCase(), NOME_RELATORIO[tipo])
+  const t = totaisCarga(d)
+  const fim = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY
+  const base = {
+    theme: 'striped' as const,
+    headStyles: { fillColor: AZUL, fontSize: 8.5 },
+    bodyStyles: { fontSize: 8.5 },
+    alternateRowStyles: { fillColor: [243, 246, 252] as [number, number, number] },
+    margin: { left: 10, right: 10 },
+  }
+
+  if (tipo === 'resumo') {
+    autoTable(doc, {
+      ...base, startY: 33,
+      head: [['Qtd', 'Un', 'Código', 'Produto', '']],
+      body: somarItens(d.pedidos).map((i) => [num(i.quantidade), i.unidade, i.codigo, i.nome, '']),
+      columnStyles: { 0: { cellWidth: 16, halign: 'right', fontStyle: 'bold' }, 1: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 18 }, 4: { cellWidth: 12 } },
+      // quadradinho para ticar na hora de carregar
+      didDrawCell: (c) => {
+        if (c.section !== 'body' || c.column.index !== 4) return
+        doc.setDrawColor(120, 120, 120); doc.rect(c.cell.x + c.cell.width / 2 - 2, c.cell.y + c.cell.height / 2 - 2, 4, 4)
+      },
+    })
+  } else if (tipo === 'vendas') {
+    autoTable(doc, {
+      ...base, startY: 33,
+      head: [['Nº', 'Cliente', 'Cidade', 'Forma', 'Volumes', 'Valor']],
+      body: d.pedidos.map((p) => {
+        const c = d.clientes.get(p.cliente_id)
+        const f = p.forma_pagamento_id ? d.formas.get(p.forma_pagamento_id)?.nome ?? '' : ''
+        return [p.numero ?? '-', rotuloCliente(c), c?.cidade ?? '', f, num(p.itens.reduce((s, i) => s + Number(i.quantidade), 0)), brl(p.total)]
+      }),
+      columnStyles: { 0: { cellWidth: 14 }, 3: { cellWidth: 24 }, 4: { cellWidth: 18, halign: 'right' }, 5: { cellWidth: 26, halign: 'right', fontStyle: 'bold' } },
+    })
+  } else {
+    let y = 33
+    for (const g of porCliente(d)) {
+      const c = g.cliente
+      const itens = g.pedidos.flatMap((p) => p.itens.map((i) => ({ ...i, numero: p.numero })))
+      const total = g.pedidos.reduce((s, p) => s + Number(p.total), 0)
+      const formas = [...new Set(g.pedidos.map((p) => (p.forma_pagamento_id ? d.formas.get(p.forma_pagamento_id)?.nome : '') || ''))].filter(Boolean).join(', ')
+      if (y > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); y = 14 }
+      doc.setFillColor(...AMARELO); doc.rect(10, y, 2, 10, 'F')
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...AZUL)
+      doc.text(rotuloCliente(c), 14, y + 4, { maxWidth: w - 70 })
+      doc.text(brl(total), w - 10, y + 4, { align: 'right' })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(90, 90, 90)
+      const end = [c?.logradouro && `${c.logradouro}, ${c.numero ?? 's/n'}`, c?.bairro, c?.cidade].filter(Boolean).join(' · ')
+      doc.text([`Pedido(s) ${g.pedidos.map((p) => '#' + (p.numero ?? '-')).join(', ')}${formas ? ' · ' + formas : ''}`, end].filter(Boolean).join('   '), 14, y + 8.5, { maxWidth: w - 24 })
+      doc.setTextColor(40, 40, 40)
+      autoTable(doc, {
+        ...base, startY: y + 11,
+        head: [['Qtd', 'Un', 'Código', 'Produto', 'Preço', 'Total']],
+        body: itens.map((i) => [num(i.quantidade), i.unidade ?? '', i.produto_codigo ?? '', i.produto_nome ?? '', brl(i.preco_unitario), brl(i.total)]),
+        headStyles: { ...base.headStyles, fontSize: 7.5 },
+        bodyStyles: { fontSize: 8 },
+        columnStyles: { 0: { cellWidth: 14, halign: 'right', fontStyle: 'bold' }, 1: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 16 }, 4: { cellWidth: 22, halign: 'right' }, 5: { cellWidth: 24, halign: 'right' } },
+        margin: { left: 14, right: 10 },
+      })
+      y = fim() + 6
+    }
+  }
+
+  // quadro de totais
+  let y = d.pedidos.length ? fim() + 6 : 36
+  if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = 14 }
+  const caixas: [string, string][] = [
+    ['Vendas', String(t.vendas)], ...(t.trocas ? [['Trocas', String(t.trocas)] as [string, string]] : []),
+    ['Clientes', String(t.clientes)], ['Itens', String(t.itens)], ['Volumes', num(t.volumes)], ['Valor das vendas', brl(t.valor)],
+  ]
+  const larg = (w - 20 - (caixas.length - 1) * 2) / caixas.length
+  caixas.forEach(([rot, val], k) => {
+    const x = 10 + k * (larg + 2)
+    const ultimo = k === caixas.length - 1
+    if (ultimo) doc.setFillColor(...AZUL); else doc.setFillColor(239, 245, 255)
+    doc.roundedRect(x, y, larg, 13, 2, 2, 'F')
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(ultimo ? 255 : 90, ultimo ? 255 : 90, ultimo ? 255 : 90)
+    doc.text(rot, x + larg / 2, y + 4.5, { align: 'center' })
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(ultimo ? 10 : 11); doc.setTextColor(ultimo ? 255 : 30, ultimo ? 255 : 30, ultimo ? 255 : 30)
+    doc.text(val, x + larg / 2, y + 10.5, { align: 'center' })
+  })
+  doc.setTextColor(40, 40, 40)
+  if (t.trocas) { doc.setFontSize(7.5); doc.text(`Trocas (${brl(t.valorTrocas)}) entram na carga mas não somam no valor das vendas.`, 10, y + 18) }
+  rodape(doc, `Gerado em ${dataHora(new Date().toISOString())}`)
+  return doc
+}
+
+// ---------- Relatório genérico em tabela (categoria, zerados, sugestão de compra) ----------
+export type LinhaRelatorio = string[] | { grupo: string[] }
+export interface OpcoesRelatorio {
+  empresa?: Empresa | null
+  titulo: string
+  subtitulo?: string
+  cabecalho: string[]
+  linhas: LinhaRelatorio[]
+  direita?: number[] // colunas alinhadas à direita
+  larguras?: Record<number, number>
+  totais?: [string, string][]
+  nota?: string
+  info?: [string, string][] // bloco de dados (rótulo: valor) antes da tabela
+}
+
+export function pdfRelatorio(o: OpcoesRelatorio) {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const w = doc.internal.pageSize.getWidth()
+  cabecalho(doc, o.empresa, o.titulo.toUpperCase(), o.subtitulo)
+  const grupos = new Set<number>()
+  const body = o.linhas.map((l, k) => { if (!Array.isArray(l)) { grupos.add(k); return l.grupo } return l })
+  const colunas: Record<number, { halign?: 'right'; cellWidth?: number }> = {}
+  o.direita?.forEach((c) => (colunas[c] = { ...colunas[c], halign: 'right' }))
+  Object.entries(o.larguras ?? {}).forEach(([c, v]) => (colunas[Number(c)] = { ...colunas[Number(c)], cellWidth: v }))
+  let inicio = 33
+  if (o.info?.length) {
+    const col = (w - 20) / 2
+    doc.setFontSize(8.5)
+    o.info.forEach(([rot, val], k) => {
+      const x = 10 + (k % 2) * col, yy = 35 + Math.floor(k / 2) * 5.2
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(90, 90, 90); doc.text(rot + ':', x, yy)
+      const lw = doc.getTextWidth(rot + ':') + 1.5
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30)
+      doc.text(doc.splitTextToSize(String(val || '-'), col - lw - 3)[0], x + lw, yy)
+    })
+    inicio = 35 + Math.ceil(o.info.length / 2) * 5.2 + 2
+    doc.setDrawColor(220, 220, 220); doc.line(10, inicio - 2, w - 10, inicio - 2)
+  }
+  autoTable(doc, {
+    startY: inicio, head: [o.cabecalho], body,
+    theme: 'striped',
+    headStyles: { fillColor: AZUL, fontSize: 8.5 },
+    bodyStyles: { fontSize: 8.5 },
+    alternateRowStyles: { fillColor: [243, 246, 252] },
+    columnStyles: colunas,
+    margin: { left: 10, right: 10 },
+    didParseCell: (d) => {
+      if (d.section === 'head' && o.direita?.includes(d.column.index)) d.cell.styles.halign = 'right'
+      if (d.section === 'body' && grupos.has(d.row.index)) {
+        d.cell.styles.fillColor = [220, 232, 253]; d.cell.styles.fontStyle = 'bold'; d.cell.styles.textColor = [24, 74, 159]
+      }
+    },
+  })
+  let y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6
+  if (o.totais?.length) {
+    if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = 14 }
+    const larg = (w - 20 - (o.totais.length - 1) * 2) / o.totais.length
+    o.totais.forEach(([rot, val], k) => {
+      const x = 10 + k * (larg + 2), ultimo = k === o.totais!.length - 1
+      if (ultimo) doc.setFillColor(...AZUL); else doc.setFillColor(239, 245, 255)
+      doc.roundedRect(x, y, larg, 13, 2, 2, 'F')
+      const cor = ultimo ? 255 : 90
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(cor, cor, cor)
+      doc.text(rot, x + larg / 2, y + 4.5, { align: 'center' })
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(ultimo ? 255 : 30, ultimo ? 255 : 30, ultimo ? 255 : 30)
+      doc.text(val, x + larg / 2, y + 10.5, { align: 'center' })
+    })
+    y += 18
+  }
+  doc.setTextColor(40, 40, 40)
+  if (o.nota) { doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(o.nota, 10, y, { maxWidth: w - 20 }) }
+  rodape(doc, `Gerado em ${dataHora(new Date().toISOString())}`)
+  return doc
 }
