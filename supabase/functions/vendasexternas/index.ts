@@ -9,6 +9,8 @@
 // Ações (POST JSON):
 //   { acao: 'testar' }
 //   { acao: 'sincronizar', entidade: 'cliente' | 'produto', ids: uuid[] }  (até 25 por chamada)
+//   { acao: 'opcoes' }  meios de pagamento, condições e vendedores de lá (para o de/para)
+//   { acao: 'enviar_pedidos', ids: uuid[] }  cria os pedidos lá (POST /atendimentos, não documentado)
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
 
 const API = 'https://api.alkord.com.br'
@@ -24,7 +26,7 @@ const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE
   auth: { persistSession: false },
 })
 
-type Chaves = { key: string; secret: string; unidade: number | null }
+type Chaves = { key: string; secret: string; unidade: number | null; tipo: number }
 
 async function ve(ch: Chaves, metodo: string, caminho: string, corpo?: unknown) {
   const r = await fetch(API + caminho, {
@@ -235,6 +237,13 @@ async function testar(ch: Chaves) {
         if (u) { unidade = Number(u); break }
       }
     } catch { /* sem produtos lá ainda */ }
+    if (!unidade) {
+      try {
+        const j = await ve(ch, 'GET', '/atendimentos?' + new URLSearchParams({ colunas: 'CODIGO,UNIDADE', numero_registros: '1', registro_inicial: '0' }))
+        const u = j?.REGISTROS?.[0]?.UNIDADE
+        if (u) unidade = Number(u)
+      } catch { /* sem atendimentos */ }
+    }
     const msg = unidade ? 'Conectado.' : 'Conectado. Unidade de negócio não encontrada: produtos novos irão sem preço.'
     await admin.from('integracao_ve').update({ testado_em: new Date().toISOString(), teste_ok: true, teste_msg: msg, unidade_negocio: unidade }).eq('id', 1)
     return { ok: true, mensagem: msg, unidade }
@@ -243,6 +252,84 @@ async function testar(ch: Chaves) {
     await admin.from('integracao_ve').update({ testado_em: new Date().toISOString(), teste_ok: false, teste_msg: msg }).eq('id', 1)
     return { ok: false, mensagem: msg }
   }
+}
+
+async function opcoes(ch: Chaves) {
+  const lista = async (rec: string) => {
+    const j = await ve(ch, 'GET', `/${rec}?` + new URLSearchParams({ numero_registros: '100', registro_inicial: '0' }))
+    return (j?.REGISTROS ?? []).map((r: any) => ({ codigo: Number(r.CODIGO), nome: String(r.NOME ?? r.CODIGO) }))
+  }
+  const [meios, condicoes, vendedores] = await Promise.all([lista('meios_pagamento'), lista('condicoes_pagamento'), lista('vendedores')])
+  return { meios, condicoes, vendedores }
+}
+
+const n2 = (v: unknown) => Number(v ?? 0).toFixed(2)
+
+async function enviarPedidos(ch: Chaves, ids: string[]) {
+  const resultado = { enviados: [] as { id: string; numero: number; ve_codigo: number }[], ja_enviados: 0, erros: [] as { id: string; numero: number; erro: string }[] }
+  const { data: peds, error } = await admin.from('pedidos')
+    .select('*, pedido_itens(*), formas_pagamento(nome)').in('id', ids)
+  if (error) throw error
+  const { data: jaFoi } = await admin.from('ve_pedidos').select('*').in('pedido_id', ids)
+  const enviados = new Map((jaFoi ?? []).map((x: any) => [x.pedido_id, x]))
+  const { data: mapa } = await admin.from('ve_mapa').select('*')
+  const m = (tipo: string, id: string | null) => (mapa ?? []).find((x: any) => x.tipo === tipo && x.registro_id === id)?.ve_codigo ?? null
+  const prodIds = [...new Set((peds ?? []).flatMap((p: any) => p.pedido_itens.map((i: any) => i.produto_id)))]
+  const cliIds = [...new Set((peds ?? []).map((p: any) => p.cliente_id))]
+  const { data: vincs } = await admin.from('ve_vinculos').select('*').in('registro_id', [...prodIds, ...cliIds])
+  const cod = (ent: string, id: string) => (vincs ?? []).find((v: any) => v.entidade === ent && v.registro_id === id)?.ve_codigo ?? null
+  const { data: prods } = await admin.from('produtos').select('id, codigo, nome').in('id', prodIds)
+  const nomeProd = (id: string) => (prods ?? []).find((p: any) => p.id === id)?.nome ?? id
+
+  for (const p of (peds ?? []).sort((a: any, b: any) => a.numero - b.numero)) {
+    try {
+      if (enviados.get(p.id)?.ve_codigo) { resultado.ja_enviados++; continue }
+      if (['orcamento', 'cancelado'].includes(p.status)) throw new Error(`Pedido ${p.status} não vai para nota`)
+      if (/troca/i.test(p.formas_pagamento?.nome ?? '')) throw new Error('Troca não vai para nota')
+      const cliente = cod('cliente', p.cliente_id)
+      if (!cliente) throw new Error('Cliente ainda não ligado ao VendasExternas (envie os cadastros)')
+      const faltando = p.pedido_itens.filter((i: any) => !cod('produto', i.produto_id)).map((i: any) => nomeProd(i.produto_id))
+      if (faltando.length) throw new Error('Produto não ligado ao VendasExternas: ' + faltando.join(', '))
+      const meio = m('forma', p.forma_pagamento_id)
+      const cond = m('condicao', p.condicao_pagamento_id)
+      if (!meio || !cond) throw new Error('Forma ou condição de pagamento sem correspondência (aba Conexão)')
+      const vendedor = m('vendedor', p.vendedor_id)
+      const itens = [...p.pedido_itens].sort((a: any, b: any) => a.item - b.item).map((i: any) => semVazios({
+        PRODUTO: { CODIGO: cod('produto', i.produto_id) },
+        QUANTIDADE: String(Number(i.quantidade)),
+        VALOR_UNITARIO: Number(i.preco_unitario).toFixed(4),
+        DESCONTO_VALOR: Number(i.desconto) ? n2(i.desconto) : undefined,
+        VALOR_TOTAL: n2(i.total),
+        RESERVAR: 'N',
+      }))
+      const corpo: Record<string, unknown> = semVazios({
+        TIPO_ATENDIMENTO: { CODIGO: ch.tipo || 1 },
+        SITUACAO: '1',
+        TIPO_OPERACAO: '1',
+        CONSUMIDOR_FINAL: 'N',
+        CLIENTE: { CODIGO: cliente },
+        VENDEDOR: vendedor ? { CODIGO: vendedor } : undefined,
+        REFERENCIA: `APP-${p.numero}`,
+        TOTAL_PRODUTOS: n2(p.subtotal),
+        TOTAL_DESCONTO_VALOR: Number(p.desconto) ? n2(p.desconto) : undefined,
+        FRETE_VALOR: Number(p.frete) ? n2(p.frete) : undefined,
+        TOTAL: n2(p.total),
+        ITENS: itens,
+        PAGAMENTOS: [{ VALOR: n2(p.total), MEIO_PAGAMENTO: { CODIGO: meio }, CONDICAO_PAGAMENTO: { CODIGO: cond } }],
+        TEXTOS: semVazios({ OBSERVACAO: [`Pedido ${p.numero} do app Maranata`, p.observacao].filter(Boolean).join(' · ') }),
+      })
+      const j = await ve(ch, 'POST', '/atendimentos', corpo)
+      const codigo = Number(j?.CODIGO) || null
+      await admin.from('ve_pedidos').upsert({ pedido_id: p.id, ve_codigo: codigo, enviado_em: new Date().toISOString(), erro: null })
+      await admin.from('pedidos').update({ exportado_nfe_em: new Date().toISOString() }).eq('id', p.id)
+      resultado.enviados.push({ id: p.id, numero: p.numero, ve_codigo: codigo ?? 0 })
+    } catch (e) {
+      const erro = e instanceof Error ? e.message : String(e)
+      await admin.from('ve_pedidos').upsert({ pedido_id: p.id, ve_codigo: null, enviado_em: null, erro })
+      resultado.erros.push({ id: p.id, numero: p.numero, erro })
+    }
+  }
+  return resultado
 }
 
 Deno.serve(async (req) => {
@@ -260,10 +347,16 @@ Deno.serve(async (req) => {
     if (!cfg?.application_key || !cfg?.application_secret) {
       return resposta({ erro: 'Integração sem chaves. Cole as chaves do VendasExternas e salve.' }, 400)
     }
-    const ch: Chaves = { key: cfg.application_key, secret: cfg.application_secret, unidade: cfg.unidade_negocio }
+    const ch: Chaves = { key: cfg.application_key, secret: cfg.application_secret, unidade: cfg.unidade_negocio, tipo: cfg.tipo_atendimento ?? 1 }
 
     const corpo = await req.json().catch(() => ({}))
     if (corpo.acao === 'testar') return resposta(await testar(ch))
+    if (corpo.acao === 'opcoes') return resposta(await opcoes(ch))
+    if (corpo.acao === 'enviar_pedidos') {
+      const ids: string[] = Array.isArray(corpo.ids) ? corpo.ids.slice(0, 20) : []
+      if (!ids.length) return resposta({ erro: 'Nenhum pedido selecionado' }, 400)
+      return resposta(await enviarPedidos(ch, ids))
+    }
     if (corpo.acao === 'sincronizar') {
       const entidade = corpo.entidade
       const ids: string[] = Array.isArray(corpo.ids) ? corpo.ids.slice(0, 25) : []

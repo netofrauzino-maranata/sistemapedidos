@@ -84,11 +84,10 @@ Cada cliente tem `link_token`; `/c/<token>` é página pública (`pages/Catalogo
 
 ## Integração VendasExternas (emissor fiscal do Neto)
 VendasExternas é da Alkord; API em https://api.alkord.com.br, documentação em docs.alkord.com.br (Postman, abrir no navegador).
-A API cria/atualiza clientes e produtos, mas **não cria pedido (atendimento) nem emite nota**. Por isso:
+A API documentada cria/atualiza clientes e produtos. **POST /atendimentos existe sem estar documentado** (testado 22/11/2026) e é usado para enviar pedidos em aberto; a nota continua sendo emitida no painel deles. Leituras não documentadas usadas: /meios_pagamento, /condicoes_pagamento, /vendedores. A API recusa item sem estoque lá (erro 130) mesmo com RESERVAR N; venda sem estoque pela API depende de liberação da Alkord.
 - Cadastros: Edge Function `supabase/functions/vendasexternas` (ações `testar` e `sincronizar`). Antes de criar procura lá (REFERENCIA_INTEGRACAO, CPF/CNPJ, código de barras, nome). Se já existia, só vincula (origem `vinculado`) e não sobrescreve. O que criamos (`criado`) é atualizado. Vínculos em `ve_vinculos`, visão `vw_ve_codigos`.
 - Chaves (`application-key`/`application-secret`) ficam em `integracao_ve` (RLS sem política, só a função lê). Gestor salva por `salvar_chaves_ve`. Nunca no repositório.
-- Pedidos: tela `pages/IntegracaoVE.tsx` (Mais > Integrar com VendasExternas) gera espelho em texto com os códigos [VE] para lançar lá, e marca lançado com `marcar_exportado_nfe`.
-- Se a Alkord liberar criação de atendimento, acrescentar ação `pedidos` na função usando os códigos de `ve_vinculos`.
+- Pedidos: tela `pages/IntegracaoVE.tsx` (Mais > Integrar com VendasExternas), aba Pedidos: botão Enviar (ação `enviar_pedidos`, grava `ve_pedidos` e `exportado_nfe_em`) ou espelho em texto. De/para de forma, condição e vendedor em `ve_mapa` (aba Conexão), tipo de atendimento em `integracao_ve.tipo_atendimento` (1 pré-venda, 5 pronta entrega).
 
 ## Dados de clientes
 O repositório é público: nunca coloque aqui planilhas, scripts de importação ou qualquer dado de clientes.

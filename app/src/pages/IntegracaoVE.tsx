@@ -3,8 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useOnline } from '../components/Layout'
 import { Aviso, Cabecalho, Campo, Icone } from '../components/ui'
 import { db } from '../lib/db'
-import { brl, data, dataHora, docFormatado, hojeISO, num } from '../lib/formato'
-import { ehCliente } from '../lib/hooks'
+import { brl, data, dataHora, docFormatado, hojeISO, normalizar, num } from '../lib/formato'
+import { ehCliente, useCondicoes, useFormas } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
 import { sincronizar as sincronizarApp } from '../lib/sync'
 
@@ -13,7 +13,7 @@ import { sincronizar as sincronizarApp } from '../lib/sync'
 // Então: cadastros vão automáticos, pedidos vão como espelho (texto pronto
 // com os códigos de lá) para o operador lançar rápido.
 
-type Status = { configurada: boolean; final_chave: string; unidade_negocio: number | null; testado_em: string | null; teste_ok: boolean | null; teste_msg: string | null }
+type Status = { configurada: boolean; final_chave: string; unidade_negocio: number | null; tipo_atendimento?: number; testado_em: string | null; teste_ok: boolean | null; teste_msg: string | null }
 type Vinculo = { entidade: 'cliente' | 'produto'; registro_id: string; ve_codigo: number | null; origem: string | null; enviado_em: string | null; erro: string | null }
 type Resultado = { criados: number; atualizados: number; vinculados: number; sem_mudanca: number; erros: { id: string; nome: string; erro: string }[] }
 type Linha = Record<string, string | number | null> & {
@@ -67,6 +67,7 @@ export default function IntegracaoVE() {
         {msg && <Aviso tipo={msg.tipo}>{msg.texto}</Aviso>}
         {status && !status.configurada && aba !== 'conexao' && <Aviso tipo="alerta">Configure as chaves na aba Conexão primeiro.</Aviso>}
         {aba === 'conexao' && <Conexao status={status} online={online} onSalvo={carregarStatus} setMsg={setMsg} />}
+        {aba === 'conexao' && status?.teste_ok && <Correspondencias status={status} online={online} onSalvo={carregarStatus} setMsg={setMsg} />}
         {aba === 'cadastros' && <Cadastros online={online} pronto={!!status?.configurada} setMsg={setMsg} />}
         {aba === 'pedidos' && <Pedidos online={online} setMsg={setMsg} />}
       </main>
@@ -120,6 +121,96 @@ function Conexao({ status, online, onSalvo, setMsg }: { status: Status | null; o
         <button className="btn-primario w-full" disabled={!online || ocupado} onClick={() => void salvar()}>{ocupado ? 'Salvando...' : 'Salvar e testar'}</button>
       </section>
     </>
+  )
+}
+
+type Opcao = { codigo: number; nome: string }
+type Mapa = { tipo: 'forma' | 'condicao' | 'vendedor'; registro_id: string; ve_codigo: number | null }
+
+// De/para: forma, condição e vendedor daqui -> código de lá (o pedido precisa disso)
+function Correspondencias({ status, online, onSalvo, setMsg }: { status: Status; online: boolean; onSalvo: () => Promise<void>; setMsg: SetMsg }) {
+  const formas = useFormas().filter((f) => !/troca/i.test(f.nome))
+  const condicoes = useCondicoes()
+  const perfis = useLiveQuery(() => db.perfis.filter((x) => x.ativo).toArray(), []) ?? []
+  const [op, setOp] = useState<{ meios: Opcao[]; condicoes: Opcao[]; vendedores: Opcao[] } | null>(null)
+  const [mapa, setMapa] = useState<Record<string, number | ''>>({})
+  const [tipo, setTipo] = useState<number>(status.tipo_atendimento ?? 1)
+  const [ocupado, setOcupado] = useState(false)
+
+  useEffect(() => {
+    if (!online) return
+    void (async () => {
+      try {
+        const [o, { data: m }] = await Promise.all([chamar({ acao: 'opcoes' }), supabase.from('ve_mapa').select('*')])
+        setOp(o)
+        setMapa(Object.fromEntries(((m ?? []) as Mapa[]).map((x) => [x.tipo + ':' + x.registro_id, x.ve_codigo ?? ''])))
+      } catch (e) { setMsg({ tipo: 'erro', texto: (e as Error).message }) }
+    })()
+  }, [online]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sugestão pelo nome quando ainda não foi escolhido
+  const sugerir = (lista: Opcao[], nome: string) => {
+    const n = normalizar(nome)
+    const achou = lista.find((o) => normalizar(o.nome) === n) ?? lista.find((o) => normalizar(o.nome).includes(n) || n.includes(normalizar(o.nome)))
+    if (achou) return achou.codigo
+    if (/boleto/.test(n)) return lista.find((o) => /boleto/i.test(o.nome))?.codigo ?? ''
+    if (/vista|dinheiro|pix/.test(n)) return lista.find((o) => /dinheiro|vista/i.test(o.nome))?.codigo ?? ''
+    return ''
+  }
+  const valor = (tipoM: string, id: string, lista: Opcao[], nome: string) => {
+    const k = tipoM + ':' + id
+    return k in mapa ? mapa[k] : sugerir(lista, nome)
+  }
+
+  async function salvar() {
+    if (!op) return
+    setOcupado(true); setMsg(null)
+    const linhas: Mapa[] = [
+      ...formas.map((f) => ({ tipo: 'forma' as const, registro_id: f.id, ve_codigo: Number(valor('forma', f.id, op.meios, f.nome)) || null })),
+      ...condicoes.map((c) => ({ tipo: 'condicao' as const, registro_id: c.id, ve_codigo: Number(valor('condicao', c.id, op.condicoes, c.nome)) || null })),
+      ...perfis.map((u) => ({ tipo: 'vendedor' as const, registro_id: u.id, ve_codigo: Number(valor('vendedor', u.id, op.vendedores, u.nome)) || null })),
+    ]
+    const { error } = await supabase.from('ve_mapa').upsert(linhas)
+    const r2 = error ? null : await supabase.rpc('definir_tipo_atendimento_ve', { p_tipo: tipo })
+    setOcupado(false)
+    if (error || r2?.error) return setMsg({ tipo: 'erro', texto: (error ?? r2?.error)!.message })
+    setMapa(Object.fromEntries(linhas.map((x) => [x.tipo + ':' + x.registro_id, x.ve_codigo ?? ''])))
+    setMsg({ tipo: 'ok', texto: 'Correspondências salvas.' })
+    await onSalvo()
+  }
+
+  const Linha = (tipoM: string, id: string, nome: string, lista: Opcao[]) => (
+    <div key={tipoM + id} className="flex items-center gap-2 text-sm">
+      <span className="w-2/5 truncate">{nome}</span>
+      <select className="campo flex-1" value={valor(tipoM, id, lista, nome)} onChange={(e) => setMapa((m) => ({ ...m, [tipoM + ':' + id]: e.target.value ? Number(e.target.value) : '' }))}>
+        <option value="">(escolha)</option>
+        {lista.map((o) => <option key={o.codigo} value={o.codigo}>{o.nome}</option>)}
+      </select>
+    </div>
+  )
+
+  return (
+    <section className="cartao space-y-3">
+      <p className="font-bold">Correspondências para enviar pedidos</p>
+      <p className="text-sm text-stone-600">Diga qual opção de lá corresponde a cada uma daqui. Já vem uma sugestão pelo nome: confira e salve.</p>
+      {!op ? <p className="text-sm text-stone-500">Carregando opções do VendasExternas...</p> : (
+        <>
+          <Campo rotulo="Os pedidos chegam lá como">
+            <select className="campo" value={tipo} onChange={(e) => setTipo(Number(e.target.value))}>
+              <option value={1}>Pedido / Pré-venda (em aberto)</option>
+              <option value={5}>Pronta entrega (em aberto)</option>
+            </select>
+          </Campo>
+          <p className="text-xs font-bold uppercase text-stone-500">Formas de pagamento</p>
+          {formas.map((f) => Linha('forma', f.id, f.nome, op.meios))}
+          <p className="text-xs font-bold uppercase text-stone-500">Condições de pagamento</p>
+          {condicoes.map((c) => Linha('condicao', c.id, c.nome, op.condicoes))}
+          <p className="text-xs font-bold uppercase text-stone-500">Vendedores</p>
+          {perfis.map((u) => Linha('vendedor', u.id, u.nome || u.email || 'Sem nome', op.vendedores))}
+          <button className="btn-primario w-full" disabled={!online || ocupado} onClick={() => void salvar()}>{ocupado ? 'Salvando...' : 'Salvar correspondências'}</button>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -237,6 +328,8 @@ function Pedidos({ online, setMsg }: { online: boolean; setMsg: SetMsg }) {
   const [marcados, setMarcados] = useState<Set<string>>(new Set())
   const [carregando, setCarregando] = useState(false)
   const [aberto, setAberto] = useState<string | null>(null)
+  const [envios, setEnvios] = useState<Map<string, { ve_codigo: number | null; erro: string | null }>>(new Map())
+  const [enviando, setEnviando] = useState(false)
 
   async function buscar() {
     setCarregando(true); setMsg(null)
@@ -244,7 +337,8 @@ function Pedidos({ online, setMsg }: { online: boolean; setMsg: SetMsg }) {
       .gte('data_pedido', ini + 'T00:00:00-03:00').lte('data_pedido', fim + 'T23:59:59-03:00')
       .in('status', ['pendente', 'confirmado', 'faturado', 'entregue']).order('pedido_numero').order('item')
     if (soNovos) q = q.is('exportado_nfe_em', null)
-    const [{ data: d, error }, { data: c }] = await Promise.all([q, supabase.from('vw_ve_codigos').select('*')])
+    const [{ data: d, error }, { data: c }, { data: ev }] = await Promise.all([q, supabase.from('vw_ve_codigos').select('*'), supabase.from('ve_pedidos').select('*')])
+    setEnvios(new Map((ev ?? []).map((x: { pedido_id: string; ve_codigo: number | null; erro: string | null }) => [x.pedido_id, x])))
     setCarregando(false)
     if (error) return setMsg({ tipo: 'erro', texto: error.message })
     setCodVe(new Map((c ?? []).map((x: { entidade: string; codigo: string; ve_codigo: number }) => [x.entidade + ':' + x.codigo, x.ve_codigo])))
@@ -274,6 +368,25 @@ function Pedidos({ online, setMsg }: { online: boolean; setMsg: SetMsg }) {
     if (navigator.share) { try { await navigator.share({ text: t }) } catch { /* cancelou */ } }
     else void copiar()
   }
+  async function enviar() {
+    const ids = [...marcados].filter((id) => !envios.get(id)?.ve_codigo)
+    if (!ids.length) return setMsg({ tipo: 'info', texto: 'Os selecionados já foram enviados.' })
+    if (!confirm(`Enviar ${ids.length} pedido(s) para o VendasExternas? Eles chegam lá em aberto, prontos para emitir a nota.`)) return
+    setEnviando(true); setMsg(null)
+    let ok = 0
+    const erros: string[] = []
+    try {
+      for (let i = 0; i < ids.length; i += 10) {
+        const r = await chamar({ acao: 'enviar_pedidos', ids: ids.slice(i, i + 10) }) as { enviados: { numero: number; ve_codigo: number }[]; erros: { numero: number; erro: string }[] }
+        ok += r.enviados.length
+        erros.push(...r.erros.map((e) => `#${e.numero}: ${e.erro}`))
+      }
+      setMsg({ tipo: erros.length ? 'alerta' : 'ok', texto: `${ok} pedido(s) enviados ao VendasExternas.${erros.length ? ' Não foram: ' + erros.join(' | ') : ''}` })
+    } catch (e) { setMsg({ tipo: 'erro', texto: (e as Error).message }) }
+    setEnviando(false)
+    void sincronizarApp(); void buscar()
+  }
+
   async function marcarLancados() {
     if (!marcados.size) return
     if (!confirm(`Marcar ${marcados.size} pedido(s) como lançados no VendasExternas? Eles saem da lista "só não lançados".`)) return
@@ -287,7 +400,7 @@ function Pedidos({ online, setMsg }: { online: boolean; setMsg: SetMsg }) {
 
   return (
     <>
-      <Aviso tipo="info">A API do VendasExternas ainda não aceita pedido. Selecione as vendas e copie o espelho: ele já traz o código de lá [VE] de cada cliente e produto, para lançar rápido.</Aviso>
+      <Aviso tipo="info">Selecione as vendas e toque em Enviar: elas chegam no VendasExternas como pedido em aberto, prontas para emitir a nota. O espelho em texto continua disponível.</Aviso>
       <section className="cartao space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <Campo rotulo="De"><input type="date" className="campo" value={ini} onChange={(e) => setIni(e.target.value)} /></Campo>
@@ -315,7 +428,8 @@ function Pedidos({ online, setMsg }: { online: boolean; setMsg: SetMsg }) {
                     <input type="checkbox" checked={marcados.has(p.pedido_id)} onChange={(e) => setMarcados((m) => { const n = new Set(m); if (e.target.checked) n.add(p.pedido_id); else n.delete(p.pedido_id); return n })} />
                     <button className="min-w-0 flex-1 text-left" onClick={() => setAberto(aberto === p.pedido_id ? null : p.pedido_id)}>
                       <p className="truncate font-semibold">#{p.pedido_numero} · {p.razao_social}</p>
-                      <p className="text-xs text-stone-500">{data(p.data_pedido)} · {itens.length} item(ns) · {p.status}{p.exportado_nfe_em ? ' · já lançado' : ''}</p>
+                      <p className="text-xs text-stone-500">{data(p.data_pedido)} · {itens.length} item(ns) · {p.status}{envios.get(p.pedido_id)?.ve_codigo ? ` · enviado (lá nº ${envios.get(p.pedido_id)!.ve_codigo})` : p.exportado_nfe_em ? ' · já lançado' : ''}</p>
+                      {envios.get(p.pedido_id)?.erro && <p className="text-xs text-red-700">{envios.get(p.pedido_id)!.erro}</p>}
                     </button>
                     <b>{brl(Number(p.pedido_total))}</b>
                   </div>
@@ -328,8 +442,9 @@ function Pedidos({ online, setMsg }: { online: boolean; setMsg: SetMsg }) {
       )}
       {!pedidos.length && !carregando && online && <p className="text-center text-sm text-stone-500">Nenhuma venda no período.</p>}
 
+      <button className="btn-primario w-full" disabled={!online || !marcados.size || enviando} onClick={() => void enviar()}><Icone nome="exportar" /> {enviando ? 'Enviando...' : 'Enviar para o VendasExternas'}</button>
       <div className="grid grid-cols-2 gap-2">
-        <button className="btn-primario" disabled={!marcados.size} onClick={() => void copiar()}><Icone nome="exportar" /> Copiar espelho</button>
+        <button className="btn-secundario" disabled={!marcados.size} onClick={() => void copiar()}>Copiar espelho</button>
         <button className="btn-secundario" disabled={!marcados.size} onClick={() => void compartilhar()}>Compartilhar</button>
       </div>
       <button className="btn-secundario w-full" disabled={!marcados.size} onClick={() => void marcarLancados()}>Marcar como lançados</button>
