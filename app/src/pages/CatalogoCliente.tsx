@@ -48,7 +48,8 @@ export default function CatalogoCliente() {
   const categorias = useMemo(() => {
     const s = new Set<string>()
     dados?.produtos.forEach((p) => s.add(p.categoria ?? OUTROS))
-    return [...s].sort((a, b) => (a === OUTROS ? 1 : b === OUTROS ? -1 : a.localeCompare(b)))
+    // o banco já manda na ordem das categorias (categorias.ordem); só joga "Outros" para o fim
+    return [...s].sort((a, b) => (a === OUTROS ? 1 : b === OUTROS ? -1 : 0))
   }, [dados])
 
   if (erro) return <Tela><p className="cartao text-center text-stone-700">{erro}</p></Tela>

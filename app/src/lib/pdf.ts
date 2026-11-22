@@ -179,7 +179,8 @@ export function pdfCatalogo({ produtos, categorias, empresa, mostrarPreco, titul
     const k = p.categoria_id ? nomeCat.get(p.categoria_id) ?? 'Outros' : 'Outros'
     grupos.set(k, [...(grupos.get(k) ?? []), p])
   }
-  const ordem = [...grupos.keys()].sort((a, b) => (a === 'Outros' ? 1 : b === 'Outros' ? -1 : a.localeCompare(b)))
+  const posCat = new Map(categorias.map((c) => [c.nome, c.ordem ?? 0]))
+  const ordem = [...grupos.keys()].sort((a, b) => (a === 'Outros' ? 1 : b === 'Outros' ? -1 : (posCat.get(a) ?? 0) - (posCat.get(b) ?? 0) || a.localeCompare(b)))
 
   // grade de cartões: 3 colunas
   const col = 3, gap = 4, mx = 10
