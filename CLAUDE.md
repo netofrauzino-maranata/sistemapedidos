@@ -85,7 +85,7 @@ Cada cliente tem `link_token`; `/c/<token>` é página pública (`pages/Catalogo
 ## Integração VendasExternas (emissor fiscal do Neto)
 VendasExternas é da Alkord; API em https://api.alkord.com.br, documentação em docs.alkord.com.br (Postman, abrir no navegador).
 A API cria/atualiza clientes e produtos, mas **não cria pedido (atendimento) nem emite nota**. Por isso:
-- Cadastros: Edge Function `supabase/functions/vendasexternas` (publicada no Supabase com o nome `super-service`, ver `FUNCAO_VE` em IntegracaoVE.tsx) (ações `testar` e `sincronizar`). Antes de criar procura lá (REFERENCIA_INTEGRACAO, CPF/CNPJ, código de barras, nome). Se já existia, só vincula (origem `vinculado`) e não sobrescreve. O que criamos (`criado`) é atualizado. Vínculos em `ve_vinculos`, visão `vw_ve_codigos`.
+- Cadastros: Edge Function `supabase/functions/vendasexternas` (ações `testar` e `sincronizar`). Antes de criar procura lá (REFERENCIA_INTEGRACAO, CPF/CNPJ, código de barras, nome). Se já existia, só vincula (origem `vinculado`) e não sobrescreve. O que criamos (`criado`) é atualizado. Vínculos em `ve_vinculos`, visão `vw_ve_codigos`.
 - Chaves (`application-key`/`application-secret`) ficam em `integracao_ve` (RLS sem política, só a função lê). Gestor salva por `salvar_chaves_ve`. Nunca no repositório.
 - Pedidos: tela `pages/IntegracaoVE.tsx` (Mais > Integrar com VendasExternas) gera espelho em texto com os códigos [VE] para lançar lá, e marca lançado com `marcar_exportado_nfe`.
 - Se a Alkord liberar criação de atendimento, acrescentar ação `pedidos` na função usando os códigos de `ve_vinculos`.

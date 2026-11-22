@@ -24,8 +24,8 @@ type Linha = Record<string, string | number | null> & {
   exportado_nfe_em: string | null; status: string; item: number
 }
 
-// Nome com que a função foi publicada no Supabase (o painel deu o nome "super-service")
-const FUNCAO_VE = 'super-service'
+// Nome da Edge Function no Supabase
+const FUNCAO_VE = 'vendasexternas'
 
 async function chamar(corpo: Record<string, unknown>) {
   const { data: d, error } = await supabase.functions.invoke(FUNCAO_VE, { body: corpo })
