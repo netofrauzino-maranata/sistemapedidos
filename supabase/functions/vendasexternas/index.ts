@@ -121,6 +121,23 @@ function payloadProduto(p: any, ch: Chaves, completo: boolean) {
   return base
 }
 
+// Categoria é obrigatória lá. Usa a nossa (ou "Geral"), achando ou criando lá.
+const cacheCategorias = new Map<string, number>()
+async function categoriaVe(ch: Chaves, nome: string): Promise<{ CODIGO: number; NOME: string } | null> {
+  const n = (nome || 'Geral').trim()
+  if (cacheCategorias.has(n)) return { CODIGO: cacheCategorias.get(n)!, NOME: n }
+  let cod: number | null = null
+  if (seguroParaFiltro(n)) cod = await buscar(ch, 'produtos_cadastro_categorias', `NOME:IGUAL:${n}`).catch(() => null)
+  if (!cod) {
+    const j = await ve(ch, 'POST', '/produtos_cadastro_categorias', { NOME: n, CATEGORIA_PAI: 0, TIPO: 0 })
+    cod = Number(j?.CODIGO ?? j?.REGISTROS?.[0]?.CODIGO) || null
+    if (!cod && seguroParaFiltro(n)) cod = await buscar(ch, 'produtos_cadastro_categorias', `NOME:IGUAL:${n}`).catch(() => null)
+  }
+  if (!cod) return null
+  cacheCategorias.set(n, cod)
+  return { CODIGO: cod, NOME: n }
+}
+
 // Procura o cadastro que já exista lá, para não duplicar
 async function procurar(ch: Chaves, entidade: string, r: any): Promise<{ codigo: number; nosso: boolean } | null> {
   const recurso = entidade === 'cliente' ? 'clientes' : 'produtos'
@@ -151,7 +168,8 @@ async function procurar(ch: Chaves, entidade: string, r: any): Promise<{ codigo:
 async function sincronizar(ch: Chaves, entidade: 'cliente' | 'produto', ids: string[]) {
   const tabela = entidade === 'cliente' ? 'clientes' : 'produtos'
   const recurso = entidade === 'cliente' ? 'clientes' : 'produtos'
-  const { data: regs, error } = await admin.from(tabela).select('*').in('id', ids)
+  const { data: regs, error } = await admin.from(tabela)
+    .select(entidade === 'produto' ? '*, categorias(nome)' : '*').in('id', ids)
   if (error) throw error
   const { data: vincs } = await admin.from('ve_vinculos').select('*').eq('entidade', entidade).in('registro_id', ids)
   const mapa = new Map((vincs ?? []).map((v: any) => [v.registro_id, v]))
@@ -178,8 +196,12 @@ async function sincronizar(ch: Chaves, entidade: 'cliente' | 'produto', ids: str
           origem = achado.nosso ? 'criado' : 'vinculado'
           resultado.vinculados++
         } else {
-          const j = await ve(ch, 'POST', `/${recurso}`,
-            entidade === 'cliente' ? payloadCliente(r, true) : payloadProduto(r, ch, true))
+          const corpo = entidade === 'cliente' ? payloadCliente(r, true) : payloadProduto(r, ch, true)
+          if (entidade === 'produto') {
+            const cat = await categoriaVe(ch, r.categorias?.nome)
+            if (cat) corpo.CATEGORIA = cat
+          }
+          const j = await ve(ch, 'POST', `/${recurso}`, corpo)
           codigo = Number(j?.CODIGO ?? j?.REGISTROS?.[0]?.CODIGO) || null
           if (!codigo) codigo = await buscar(ch, recurso, `REFERENCIAS_INTEGRACAO:IGUAL:${r.codigo}`).catch(() => null)
           origem = 'criado'
