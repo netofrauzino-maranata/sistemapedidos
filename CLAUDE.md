@@ -61,11 +61,26 @@ Netlify: Production branch = `main` (cada deploy de produção gasta créditos; 
 Endereço: `pedidos.maranatadistribuidora.com.br` (CNAME no Registro.br apontando para o site do Netlify).
 Play Store (futuro): empacotar a PWA como TWA com Bubblewrap; precisa do arquivo `/.well-known/assetlinks.json` em `app/public`.
 
+## Estado em 22/11/2026 (passagem do Túlio para o Neto)
+- O projeto passou da conta Claude do Túlio para a conta Claude Pro do Neto. Túlio continua colaborador no GitHub, Supabase e Netlify.
+- **Código mais novo NÃO está no `main`.** `main` = produção (atrasada, parada desde 21/11). O código atual está nos ramos `claude/project-thread-9cegvl` (prévia no ar) e `claude/project-thread-tmsxrt` (igual + este guia). Ao começar num ramo novo, faça merge do mais novo desses antes de mexer.
+- Netlify: créditos do ciclo acabaram em 22/11 (produção pausada). Prévia grátis que está valendo: https://claude-project-thread-9cegvl--sistemapedidos-bz0r.netlify.app (mesmo Supabase da produção, dados reais). Ramo novo só vira prévia se estiver liberado em Branch deploys (ou "All branches").
+- Banco: todas as migrations até `20261122030000` aplicadas no Supabase. Edge Function publicada: `vendasexternas` (sobras `super-service` e `super-responder` podem ser apagadas no painel).
+- Aplicar mudança de banco: o aviso de aprovação de escrita do conector Supabase falha no celular. Prefira gerar o SQL e o dono cola no SQL Editor (consulta nova) pelo computador.
+- Feito em 22/11: fotos novas dos 91 produtos, 11 categorias com ordem (catálogo e PDF seguem), envio de pedidos ao VendasExternas funcionando (pedido 10 virou atendimento 14201).
+
+## Virada oficial (combinado, ainda não feita)
+Até lá testam na prévia com dados reais em 2 celulares. No dia: apagar movimentos de teste (pedidos, entradas, cargas, pedidos do catálogo e seus movimentos de estoque), manter cadastros (produtos, fotos, categorias, clientes/fornecedores, tabelas, usuários), importar o saldo de estoque novo enviado pelo dono, zerar numeração de pedidos, PR do ramo para `main` (merge pelo dono, gasta créditos do Netlify) e trocar os links do catálogo para o endereço oficial. Fazer só com OK explícito, é irreversível.
+
 ## Pendências conhecidas
+- VendasExternas recusa item sem estoque lá (erro 130). Aguardando a Alkord liberar venda sem estoque pela API. Não usar `USUARIO_AUTORIZACAO_ESTOQUE` sem confirmação deles.
+- De/para de condição: "7/14/21 dias" deve ir para o código 20 do VE; "7/14" não existe lá.
+- Cadastros no VE: 1 produto (059) e 7 clientes não subiram (endereço incompleto; 2 com CPF/CNPJ divergente).
+- Dados: falta CNPJ de 38 clientes, NCM dos produtos, conferir códigos IBGE, CEP da empresa.
+- Domínio `pedidos.maranatadistribuidora.com.br` ainda não ligado (CNAME no Registro.br + domínio no Netlify).
 - Vendedor consegue ler `preco_custo` (vem junto no select de produtos). Se o Neto quiser esconder custo, mover para tabela só do gestor.
-- Formato exato de importação do emissor de NF-e do Neto ainda não definido (hoje exporta CSV genérico e JSON).
-- Relatórios do app antigo (vendasmobile) ainda serão enviados para replicar.
 - Comissão de vendedor não existe ainda.
+- Netlify grátis tem ~300 créditos/mês (~15 por deploy de produção). Alternativa estudada: Cloudflare Pages (grátis e permite uso comercial).
 
 ## Tabelas de preço
 `tabelas_preco` + `tabela_preco_itens` (só exceções: produto sem item usa `preco_venda`). Cliente tem `tabela_preco_id`, que só o gestor muda (trigger).
