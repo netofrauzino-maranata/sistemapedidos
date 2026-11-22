@@ -95,5 +95,6 @@ O repositório é público: nunca coloque aqui planilhas, scripts de importaçã
 
 ## Identidade visual
 Azul da logo `#00268B` (marca), amarelo `#FFD200` (destaque), vermelho `#E30613` (apoio), fundo `#F4F6FB`.
+Fotos dos produtos: `app/public/produtos/<codigo>.webp` (800x800), lidas por `fotoDoProduto` em `lib/fotos.ts`; `foto_url` enviada pelo cadastro tem prioridade. Ao trocar fotos, suba o nome do cache `fotos-padrao-vN` em `vite.config.ts` e apague o antigo em `main.tsx`.
 Logo e mascote em `app/public/logo.png` e `app/public/mascote.png` (login, topo do Início). Logo do PDF em `app/src/assets/logo-pdf.jpg`. Ícones do app em `app/public/icon-*.png`.
 Fluxos inspirados no app que o Neto usava, mas visual próprio da Maranata.
