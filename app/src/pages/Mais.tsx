@@ -17,6 +17,7 @@ export default function Mais() {
     ['/catalogo', 'Catálogo em PDF', 'livro', false],
     ['/config/impressora', 'Impressora Bluetooth', 'impressora', false],
     ['/relatorios', 'Relatórios', 'grafico', false],
+    ['/integracao-ve', 'Integrar com VendasExternas (fiscal)', 'sync', true],
     ['/exportar-nfe', 'Exportar vendas para NF-e', 'exportar', true],
     ['/config/categorias', 'Categorias de produtos', 'caixa', true],
     ['/config/tabelas', 'Tabelas de preço', 'preco', true],

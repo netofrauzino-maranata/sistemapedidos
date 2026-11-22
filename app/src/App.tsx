@@ -10,6 +10,7 @@ import Empresa from './pages/Empresa'
 import Entrada from './pages/Entrada'
 import Estoque from './pages/Estoque'
 import ExportarNfe from './pages/ExportarNfe'
+import IntegracaoVE from './pages/IntegracaoVE'
 import Inicio from './pages/Inicio'
 import Login, { AguardandoLiberacao } from './pages/Login'
 import Mais from './pages/Mais'
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="catalogo-pedidos" element={<PedidosCatalogo />} />
         <Route path="carga" element={<SoGestor><Carga /></SoGestor>} />
         <Route path="exportar-nfe" element={<SoGestor><ExportarNfe /></SoGestor>} />
+        <Route path="integracao-ve" element={<SoGestor><IntegracaoVE /></SoGestor>} />
         <Route path="config/empresa" element={<SoGestor><Empresa /></SoGestor>} />
         <Route path="config/usuarios" element={<SoGestor><Usuarios /></SoGestor>} />
         <Route path="config/impressora" element={<Impressora />} />
