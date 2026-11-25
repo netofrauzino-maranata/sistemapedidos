@@ -36,7 +36,7 @@ export default defineConfig({
             // fotos padronizadas que vêm com o app (public/produtos). Ao trocar as fotos, suba o número do cache (v2, v3...) e ajuste main.tsx
             urlPattern: /\/produtos\/[^/]+\.webp$/,
             handler: 'CacheFirst',
-            options: { cacheName: 'fotos-padrao-v2', expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 60 } },
+            options: { cacheName: 'fotos-padrao-v3', expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 60 } },
           },
           {
             // fotos dos produtos: guarda no celular para ver offline e no catálogo

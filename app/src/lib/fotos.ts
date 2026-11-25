@@ -1,7 +1,7 @@
 import type { Produto } from './tipos'
 
 // Fotos dos produtos que vêm junto com o app, em public/produtos/<codigo>.webp (800x800 WebP).
-// Fonte: pasta do Drive com as artes do catálogo, um PNG por código. Atualizadas em 22/11/2026.
+// Fonte: pasta do Drive com as artes do catálogo, um PNG por código. Atualizadas em 22/11/2026 e 25/11/2026 (pasta "Novo Itens catalogo"; o 059 não veio e manteve a foto anterior).
 // Para incluir um produto novo: salve a foto (800x800 WebP) com o código como nome e acrescente o código aqui.
 // Ao trocar fotos existentes, suba o nome do cache em vite.config.ts para os celulares baixarem as novas.
 // Se o gestor enviar uma foto pelo cadastro (foto_url), ela tem prioridade.

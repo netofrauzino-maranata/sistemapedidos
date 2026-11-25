@@ -5,8 +5,8 @@ import App from './App'
 import { AuthProvider } from './lib/auth'
 import './index.css'
 
-// Fotos dos produtos trocadas em 22/11/2026: apaga o cache antigo para o celular baixar as novas.
-if ('caches' in window) caches.delete('fotos-padrao').catch(() => {})
+// Fotos dos produtos trocadas em 22/11 e 25/11/2026: apaga os caches antigos para o celular baixar as novas.
+if ('caches' in window) for (const c of ['fotos-padrao', 'fotos-padrao-v2']) caches.delete(c).catch(() => {})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
