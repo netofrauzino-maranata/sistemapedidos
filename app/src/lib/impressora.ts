@@ -265,16 +265,13 @@ export async function imprimir(bytes: Uint8Array, cfg: ConfigImpressora) {
 
 // ---------- Carga do dia (térmica) ----------
 export function cupomCarga(tipo: TipoRelatorioCarga, d: DadosCarga, cfg: ConfigImpressora): Uint8Array {
+  if (tipo === 'resumo') return cupomCarregamento(d, cfg)
   const c = new Cupom(cfg.largura === 58 ? 32 : 48)
   const t = totaisCarga(d)
   c.centro().negrito().alto().linha(d.titulo.toUpperCase()).alto(false).linha(NOME_RELATORIO[tipo].toUpperCase()).negrito(false).centro(false)
   c.linha('Impresso:' + dataHora(new Date().toISOString()))
   c.separador()
-  if (tipo === 'resumo') {
-    c.linha('QTD  UN  CODIGO DESCRICAO')
-    c.separador()
-    for (const i of somarItens(d.pedidos)) c.quebrado(`${qtdTxt(i.quantidade).padStart(4)} ${i.unidade.toLowerCase().padEnd(3)} ${i.codigo} ${i.nome}`)
-  } else if (tipo === 'vendas') {
+  if (tipo === 'vendas') {
     for (const p of d.pedidos) {
       const f = p.forma_pagamento_id ? d.formas.get(p.forma_pagamento_id)?.nome ?? '' : ''
       c.par(rotuloCliente(d.clientes.get(p.cliente_id)), 'R$ ' + reais(p.total))
@@ -296,6 +293,59 @@ export function cupomCarga(tipo: TipoRelatorioCarga, d: DadosCarga, cfg: ConfigI
   c.par('Itens', String(t.itens))
   c.par('Volumes', qtdTxt(t.volumes))
   c.negrito().par('Vlr. vendas', 'R$ ' + reais(t.valor)).negrito(false)
+  for (let k = 0; k < Math.max(0, cfg.avancar); k++) c.linha()
+  c.raw(0x1d, 0x56, 0x42, 0)
+  return c.bytes()
+}
+
+// Relatório de carregamento no modelo do sistema antigo (Vendas Mobile), com um
+// quadradinho [ ] em cada item para ir ticando a caneta ao carregar o caminhão.
+// Itens somados de todos os pedidos da carga (trocas inclusas), em ordem alfabética.
+function cupomCarregamento(d: DadosCarga, cfg: ConfigImpressora): Uint8Array {
+  const colunas = cfg.largura === 58 ? 32 : 48
+  const c = new Cupom(colunas)
+  const e = d.empresa
+  const itens = somarItens(d.pedidos).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  const t = totaisCarga(d)
+
+  c.centro()
+  c.negrito().linha('RELATORIO DE CARREGAMENTO').negrito(false)
+  c.quebrado(e?.razao_social || 'Maranata Distribuidora')
+  if (d.vendedor) c.linha('Vend.:' + d.vendedor + '.')
+  if (e?.telefone) c.linha('Fone:' + foneFormatado(e.telefone))
+  if (e?.email) c.linha('Email:' + e.email)
+  c.linha('Data:' + new Date().toLocaleString('pt-BR').replace(',', ''))
+  c.linha(d.titulo)
+  c.centro(false)
+  c.separador()
+
+  // "[ ] QTD. UN. CODIGO DESCRICAO"; a descrição quebra alinhada na própria coluna
+  const larguraQtd = Math.max(4, ...itens.map((i) => qtdTxt(i.quantidade).length))
+  const larguraCod = Math.max(3, ...itens.map((i) => i.codigo.length))
+  const recuo = 4 + larguraQtd + 1 + 3 + 1 + larguraCod + 1
+  c.linha('    ' + 'QTD.'.padStart(larguraQtd) + ' UN. ' + 'COD'.padEnd(larguraCod) + ' DESCRICAO')
+  c.separador()
+  c.raw(0x1b, 0x33, 44) // um pouco mais de espaço entre linhas para ticar a caneta
+  for (const i of itens) {
+    const ini = '[ ] ' + qtdTxt(i.quantidade).padStart(larguraQtd) + ' ' + i.unidade.toLowerCase().slice(0, 3).padEnd(3) + ' ' + i.codigo.padEnd(larguraCod) + ' '
+    const cabe = Math.max(8, colunas - recuo)
+    const palavras = i.nome.toUpperCase().split(/\s+/).filter(Boolean)
+    const linhas: string[] = []; let l = ''
+    for (const p of palavras) {
+      if (l && (l + ' ' + p).length > cabe) { linhas.push(l); l = p } else l = l ? l + ' ' + p : p
+      while (l.length > cabe) { linhas.push(l.slice(0, cabe)); l = l.slice(cabe) }
+    }
+    if (l) linhas.push(l)
+    linhas.forEach((txt, k) => c.linha((k === 0 ? ini : ' '.repeat(recuo)) + txt))
+  }
+  c.raw(0x1b, 0x32) // espaçamento normal
+  c.separador()
+  c.centro()
+  c.negrito().linha(`${itens.length} ${itens.length === 1 ? 'item' : 'itens'}  ${qtdTxt(t.volumes)} vols.`).negrito(false)
+  c.linha(`${t.pedidos} pedido(s)${t.trocas ? `, ${t.trocas} troca(s)` : ''} - ${t.clientes} cliente(s)`)
+  c.linha(); c.linha('Conferido por: ____________________')
+  c.linha(); c.linha('APP MARANATA PEDIDOS')
+  c.centro(false)
   for (let k = 0; k < Math.max(0, cfg.avancar); k++) c.linha()
   c.raw(0x1d, 0x56, 0x42, 0)
   return c.bytes()

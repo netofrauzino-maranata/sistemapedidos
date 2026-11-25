@@ -23,6 +23,7 @@ export interface DadosCarga {
   formas: Map<string, FormaPagamento>
   perfis: Map<string, Perfil>
   empresa?: Empresa | null
+  vendedor?: string // nome que sai no relatório de carregamento
 }
 
 export interface ItemCarga { produto_id: string; codigo: string; nome: string; unidade: string; quantidade: number; total: number }

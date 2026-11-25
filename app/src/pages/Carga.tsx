@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Aviso, Cabecalho, Folha, Icone, Vazio } from '../components/ui'
 import { db } from '../lib/db'
 import { brl, data, hojeISO, num } from '../lib/formato'
+import { useAuth } from '../lib/auth'
 import { useClientesMapa, useEmpresa, usePerfisMapa } from '../lib/hooks'
 import { cupomCarga, imprimir, lerConfig } from '../lib/impressora'
 import { linkGoogleMaps, linkRotaGoogle, linkWaze, temLocalizacao } from '../lib/mapa'
@@ -30,6 +31,14 @@ function lerFora(dia: string): Set<string> {
 function gravarFora(dia: string, s: Set<string>) {
   try { localStorage.setItem(chaveFora(dia), JSON.stringify([...s])) } catch { /* sem armazenamento */ }
 }
+// Itens já ticados no carregamento (checklist da tela), por dia, só neste celular.
+const chaveTicados = (dia: string) => `maranata-carga-ticados-${dia}`
+function lerTicados(dia: string): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(chaveTicados(dia)) ?? '[]') as string[]) } catch { return new Set() }
+}
+function gravarTicados(dia: string, s: Set<string>) {
+  try { localStorage.setItem(chaveTicados(dia), JSON.stringify([...s])) } catch { /* sem armazenamento */ }
+}
 function somarDias(dia: string, n: number) {
   const d = new Date(dia + 'T12:00:00'); d.setDate(d.getDate() + n)
   return d.toLocaleDateString('en-CA')
@@ -40,6 +49,8 @@ export default function Carga() {
   const [aba, setAba] = useState<TipoRelatorioCarga>('vendas')
   const [vendedor, setVendedor] = useState('')
   const [fora, setFora] = useState<Set<string>>(() => lerFora(hojeISO()))
+  const [ticados, setTicados] = useState<Set<string>>(() => lerTicados(hojeISO()))
+  const { perfil } = useAuth()
   const [imprimindo, setImprimindo] = useState(false)
   const [relatorio, setRelatorio] = useState<TipoRelatorioCarga>('resumo')
   const [msg, setMsg] = useState('')
@@ -57,10 +68,16 @@ export default function Carga() {
   const vendedores = [...new Set(doDia.map((p) => p.vendedor_id))]
   const listados = vendedor ? doDia.filter((p) => p.vendedor_id === vendedor) : doDia
   const selecionados = listados.filter((p) => !fora.has(p.id))
-  const dados: DadosCarga = { titulo: `Carga de ${data(dia)}`, pedidos: selecionados, clientes, formas, perfis, empresa }
+  const dados: DadosCarga = { titulo: `Carga de ${data(dia)}`, pedidos: selecionados, clientes, formas, perfis, empresa, vendedor: (vendedor ? perfis.get(vendedor)?.nome : perfil?.nome) ?? undefined }
   const t = totaisCarga(dados)
 
-  function trocarDia(novo: string) { if (!novo) return; setDia(novo); setFora(lerFora(novo)) }
+  function trocarDia(novo: string) { if (!novo) return; setDia(novo); setFora(lerFora(novo)); setTicados(lerTicados(novo)) }
+  function ticar(id: string) {
+    const s = new Set(ticados)
+    if (s.has(id)) s.delete(id); else s.add(id)
+    setTicados(s); gravarTicados(dia, s)
+  }
+  function limparTicados() { const s = new Set<string>(); setTicados(s); gravarTicados(dia, s) }
   function marcar(ids: string[], incluir: boolean) {
     const s = new Set(fora)
     ids.forEach((id) => (incluir ? s.delete(id) : s.add(id)))
@@ -145,16 +162,32 @@ export default function Carga() {
           })}
         </>}
 
-        {aba === 'resumo' && !!selecionados.length && (
-          <ul className="cartao divide-y divide-stone-100 p-0">
-            {somarItens(selecionados).map((i) => (
-              <li key={i.produto_id} className="flex items-center gap-3 px-4 py-2.5">
-                <span className="w-16 shrink-0 text-right font-bold text-marca-700">{num(i.quantidade)} <span className="text-xs font-normal lowercase text-stone-500">{i.unidade}</span></span>
-                <span className="min-w-0 flex-1 text-sm"><span className="text-stone-500">{i.codigo}</span> {i.nome}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        {aba === 'resumo' && !!selecionados.length && (() => {
+          const itens = somarItens(selecionados)
+          const feitos = itens.filter((i) => ticados.has(i.produto_id)).length
+          return <>
+            <div className="flex items-center justify-between text-sm">
+              <span className={feitos === itens.length ? 'font-bold text-emerald-700' : 'text-stone-500'}>
+                {feitos === itens.length ? 'Tudo carregado' : `${feitos} de ${itens.length} item(ns) carregado(s)`}
+              </span>
+              {!!feitos && <button className="font-semibold text-marca-700" onClick={limparTicados}>Limpar ticados</button>}
+            </div>
+            <ul className="cartao divide-y divide-stone-100 p-0">
+              {itens.map((i) => {
+                const ok = ticados.has(i.produto_id)
+                return (
+                  <li key={i.produto_id}>
+                    <label className={'flex cursor-pointer items-center gap-3 px-4 py-2.5 ' + (ok ? 'bg-emerald-50' : '')}>
+                      <input type="checkbox" className="h-5 w-5 shrink-0 accent-emerald-600" checked={ok} onChange={() => ticar(i.produto_id)} />
+                      <span className={'w-16 shrink-0 text-right font-bold ' + (ok ? 'text-stone-400' : 'text-marca-700')}>{num(i.quantidade)} <span className="text-xs font-normal lowercase text-stone-500">{i.unidade}</span></span>
+                      <span className={'min-w-0 flex-1 text-sm ' + (ok ? 'text-stone-400 line-through' : '')}><span className="text-stone-500">{i.codigo}</span> {i.nome}</span>
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
+          </>
+        })()}
 
         {aba === 'clientes' && !!selecionados.length && <Rota grupos={porCliente(dados)} />}
 
@@ -200,7 +233,7 @@ export default function Carga() {
                 className={'w-full rounded-xl p-3 text-left ring-1 ' + (relatorio === r ? 'bg-marca-700 text-white ring-marca-700' : 'bg-white ring-stone-300')}>
                 <span className="block font-bold">{NOME_RELATORIO[r]}</span>
                 <span className={'block text-xs ' + (relatorio === r ? 'text-marca-100' : 'text-stone-500')}>
-                  {r === 'resumo' ? 'Lista somada de produtos e quantidades para separar.' : r === 'clientes' ? 'Itens de cada cliente, para entregar.' : 'Cada venda com valor e forma de pagamento.'}
+                  {r === 'resumo' ? 'Relatório de carregamento: itens somados em ordem alfabética, com [ ] para ticar.' : r === 'clientes' ? 'Itens de cada cliente, para entregar.' : 'Cada venda com valor e forma de pagamento.'}
                 </span>
               </button>
             ))}
