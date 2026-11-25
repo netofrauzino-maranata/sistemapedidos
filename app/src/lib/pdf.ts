@@ -76,54 +76,22 @@ export function pdfPedido({ pedido: p, cliente: c, vendedor, empresa, condicao, 
   const mx = 8, dir = w - mx
   const F = 'courier'
   const troca = forma?.conta_como_venda === false
-  const tipo = p.status === 'orcamento' ? 'ORÇAMENTO' : troca ? 'TROCA' : 'PEDIDO'
   const numero = p.numero ? String(p.numero) : 'provisório'
-  const empresaNome = empresa?.razao_social || 'Maranata Distribuidora'
   const preto = () => doc.setTextColor(0, 0, 0)
   const tracejado = (y: number) => {
     doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.2); doc.setLineDashPattern([0.8, 0.6], 0)
     doc.line(mx, y, dir, y); doc.setLineDashPattern([], 0)
   }
   const fonte = (tam: number, negrito = false) => { doc.setFont(F, negrito ? 'bold' : 'normal'); doc.setFontSize(tam) }
-  preto()
 
-  // canhoto de recebimento
+  // cabeçalho compacto (faixa azul com a logo e os dados da empresa)
   const cidadeCli = [c?.cidade, c?.uf].filter(Boolean).join(' - ')
-  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.3)
-  doc.rect(mx, 6, w - 2 * mx, 24)
-  fonte(7)
-  doc.text(`Recebemos de ${empresaNome} os produtos e/ou serviços constantes ${troca && p.status !== 'orcamento' ? 'na troca' : 'no ' + tipo.toLowerCase()} ${numero}.`, mx + 2, 10, { maxWidth: w - 2 * mx - 4 })
-  doc.text(`Destinatário: ${c?.razao_social ?? '—'}, ${c?.logradouro ?? ''}${c?.numero ? ', nro. ' + c.numero : ''} - Bairro: ${c?.bairro ?? ''} Cidade: ${cidadeCli}.`, mx + 2, 13.5, { maxWidth: w - 2 * mx - 4 })
-  doc.text(`Emissão: ${data(p.data_pedido)}    Valor total: ${brl(p.total)}`, mx + 2, 17)
-  doc.line(mx, 20, dir, 20); doc.line(mx + 62, 20, mx + 62, 30)
-  fonte(6.5)
-  doc.text('DATA DO RECEBIMENTO: ____/____/______', mx + 2, 26)
-  doc.text('IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR: ______________________________', mx + 64, 26)
-
-  // empresa
-  let y = 37
-  fonte(12, true); doc.text(empresaNome, mx, y, { maxWidth: w - 2 * mx - 50 })
-  fonte(7.5)
-  const linhasEmp = [
-    [empresa?.cnpj && `CNPJ: ${docFormatado(empresa.cnpj)}`, empresa?.ie && `IE: ${empresa.ie}`].filter(Boolean).join('  '),
-    empresa?.logradouro ? `Endereço: ${empresa.logradouro}, nro. ${empresa.numero ?? 's/n'}${empresa.bairro ? '  Bairro: ' + empresa.bairro : ''}` : '',
-    empresa?.cidade ? `Cidade: ${empresa.cidade}${empresa.uf ? '-' + empresa.uf : ''}${empresa.cep ? '  CEP: ' + empresa.cep : ''}` : '',
-    [empresa?.telefone, empresa?.whatsapp].filter(Boolean).length ? `Fones: ${[empresa?.telefone, empresa?.whatsapp].filter(Boolean).map((t) => foneFormatado(t)).join(' / ')}` : '',
-    empresa?.email ? `E-mail: ${empresa.email}` : '',
-  ].filter(Boolean)
-  linhasEmp.forEach((l, i) => doc.text(l, mx, y + 4 + i * 3.4))
-  // logo pequena à direita
-  const lh = 16, lw = lh * 520 / 265
-  doc.addImage(logoPdf, 'JPEG', dir - lw, 32, lw, lh)
-  y = Math.max(y + 4 + linhasEmp.length * 3.4, 50) + 2
-  fonte(7.5); doc.text(dataHora(new Date().toISOString()), mx, y)
-  fonte(9, true); doc.text(`${tipo} N°: ${numero}`, w / 2, y, { align: 'center' })
-  if (p.status !== 'orcamento') { fonte(7.5); doc.text(`Situação: ${STATUS_LABEL[p.status]}`, dir, y, { align: 'right' }) }
-  y += 2
-  tracejado(y)
-
+  const titulo = p.status === 'orcamento' ? 'ORÇAMENTO' : troca ? 'TROCA' : 'PEDIDO DE VENDA'
+  cabecalho(doc, empresa, titulo, `Nº ${numero}  ·  ${dataHora(p.data_pedido)}`)
+  preto()
+  let y = 32
   // cliente
-  y += 4
+  y += 1
   const campo = (rot: string, val: string, x: number, yy: number, negrito = false) => {
     fonte(7.5); doc.text(rot, x, yy)
     fonte(7.5, negrito); doc.text(val, x + doc.getTextWidth(rot) + 1, yy, { maxWidth: x < w / 2 ? 118 - doc.getTextWidth(rot) : dir - x - doc.getTextWidth(rot) - 1 })
@@ -146,6 +114,7 @@ export function pdfPedido({ pedido: p, cliente: c, vendedor, empresa, condicao, 
     ['IE...........:', c?.ie ?? ''],
     ['Emissão......:', dataHora(p.data_pedido)],
     ...(p.data_entrega ? [['Entrega......:', data(p.data_entrega)] as [string, string]] : []),
+    ...(p.status !== 'orcamento' ? [['Situação.....:', STATUS_LABEL[p.status]] as [string, string]] : []),
   ]
   dirCampos.forEach(([r, v], i) => campo(r, v, x2, y + (i + 1) * lh2))
   y += esq.length * lh2
