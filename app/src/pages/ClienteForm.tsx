@@ -6,7 +6,8 @@ import { useAuth } from '../lib/auth'
 import { buscarCep, buscarCnpj } from '../lib/consultas'
 import { db } from '../lib/db'
 import { brl, cnpjValido, cpfValido, dataHora, soDigitos, uuid } from '../lib/formato'
-import { useCondicoes, useFormas, usePerfisMapa } from '../lib/hooks'
+import { linkGoogleMaps, linkWaze, pegarPosicao, temLocalizacao } from '../lib/mapa'
+import { nomeCliente, useCondicoes, useFormas, usePerfisMapa } from '../lib/hooks'
 import { CHAVE_COPIA, CHAVE_RASCUNHO, repetirPedido } from '../lib/repetir'
 import { supabase } from '../lib/supabase'
 import { sincronizar } from '../lib/sync'
@@ -197,6 +198,9 @@ export default function ClienteForm() {
           <Campo rotulo="Cód. IBGE" className="col-span-2" dica="Preenche pelo CEP"><input className="campo" inputMode="numeric" {...txt('codigo_ibge')} /></Campo>
         </section>
 
+        <Localizacao c={c} novo={!id} quem={perfil?.id ?? null} nomeQuem={(uid) => perfis.get(uid)?.nome ?? ''}
+          onMudar={(p) => setC((x) => (x ? { ...x, ...p } : x))} />
+
         <section className="cartao grid grid-cols-2 gap-3">
           <h2 className="col-span-2 font-bold">{cli ? 'Comercial' : 'Observações'}</h2>
           {cli && <>
@@ -303,6 +307,91 @@ function CatalogoOnline({ c, onToken }: { c: Cliente; onToken: (t: string) => vo
         </div>
       )}
       {msg && <p className="break-all text-xs text-marca-700">{msg}</p>}
+    </section>
+  )
+}
+
+// Localização para entrega: o vendedor salva no cliente (GPS do celular, funciona
+// sem internet) e qualquer um abre depois no Google Maps ou no Waze.
+function Localizacao({ c, novo, quem, nomeQuem, onMudar }: {
+  c: Cliente; novo: boolean; quem: string | null; nomeQuem: (uid: string) => string; onMudar: (p: Partial<Cliente>) => void
+}) {
+  const [pegando, setPegando] = useState(false)
+  const [msg, setMsg] = useState<{ tipo: 'erro' | 'ok' | 'alerta'; texto: string } | null>(null)
+  const tem = temLocalizacao(c)
+
+  async function gravar(p: Partial<Cliente>) {
+    onMudar(novo ? p : { ...p, _loc_pendente: true })
+    // cadastro já existente: salva na hora (não precisa apertar "Salvar cliente")
+    if (!novo) {
+      await db.clientes.update(c.id, { ...p, _loc_pendente: true })
+      void sincronizar()
+    }
+  }
+
+  async function salvarAqui() {
+    if (tem && !confirm('Trocar a localização salva pela localização de agora?')) return
+    setPegando(true); setMsg(null)
+    try {
+      const pos = await pegarPosicao()
+      await gravar({
+        latitude: pos.latitude, longitude: pos.longitude, localizacao_precisao: pos.precisao,
+        localizacao_em: new Date().toISOString(), localizacao_por: quem,
+      })
+      const ruim = pos.precisao != null && pos.precisao > 100
+      setMsg(ruim
+        ? { tipo: 'alerta', texto: `Salva, mas o GPS está impreciso (uns ${pos.precisao} m). Se puder, tente de novo na porta do cliente, em lugar aberto.` }
+        : { tipo: 'ok', texto: `Localização salva${pos.precisao ? ` (precisão de uns ${pos.precisao} m)` : ''}.${novo ? ' Aperte "Salvar cliente" para gravar o cadastro.' : navigator.onLine ? '' : ' Sem internet agora: envia sozinha quando voltar.'}` })
+    } catch (e) { setMsg({ tipo: 'erro', texto: (e as Error).message }) }
+    setPegando(false)
+  }
+
+  async function remover() {
+    if (!confirm('Remover a localização deste cadastro?')) return
+    await gravar({ latitude: null, longitude: null, localizacao_precisao: null, localizacao_em: null, localizacao_por: null })
+    setMsg(null)
+  }
+
+  async function compartilhar() {
+    if (!tem) return
+    const texto = `${nomeCliente(c)}\nGoogle Maps: ${linkGoogleMaps(c.latitude, c.longitude)}\nWaze: ${linkWaze(c.latitude, c.longitude)}`
+    if (navigator.share) { try { await navigator.share({ text: texto }); return } catch (e) { if ((e as Error).name === 'AbortError') return } }
+    try { await navigator.clipboard.writeText(texto); setMsg({ tipo: 'ok', texto: 'Links copiados. Cole no WhatsApp.' }) } catch { /* sem área de transferência */ }
+  }
+
+  return (
+    <section className="cartao space-y-3">
+      <div className="flex items-center gap-2">
+        <Icone nome="mapa" className="h-5 w-5 text-marca-700" />
+        <h2 className="flex-1 font-bold">Localização para entrega</h2>
+        {c._loc_pendente && <span className="etiqueta bg-amber-100 text-amber-800">Falta enviar</span>}
+      </div>
+      {tem ? (
+        <>
+          <p className="text-xs text-stone-500">
+            Salva{c.localizacao_em ? ` em ${dataHora(c.localizacao_em)}` : ''}
+            {c.localizacao_por && nomeQuem(c.localizacao_por) ? ` por ${nomeQuem(c.localizacao_por)}` : ''}
+            {c.localizacao_precisao ? ` · precisão de uns ${c.localizacao_precisao} m` : ''}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <a className="btn-primario" href={linkGoogleMaps(c.latitude, c.longitude)} target="_blank" rel="noreferrer"><Icone nome="mapa" /> Google Maps</a>
+            <a className="btn bg-sky-500 text-white" href={linkWaze(c.latitude, c.longitude)} target="_blank" rel="noreferrer"><Icone nome="caminhao" /> Waze</a>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <button type="button" className="btn-secundario text-sm" disabled={pegando} onClick={() => void salvarAqui()}>{pegando ? 'Pegando...' : 'Atualizar'}</button>
+            <button type="button" className="btn-secundario text-sm" onClick={() => void compartilhar()}><Icone nome="whatsapp" /> Enviar</button>
+            <button type="button" className="btn-secundario text-sm text-red-700" onClick={() => void remover()}>Remover</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-xs text-stone-500">Estando no cliente, aperte o botão. O celular guarda onde ele fica (funciona sem internet) e o motorista abre depois no Google Maps ou no Waze.</p>
+          <button type="button" className="btn-primario w-full" disabled={pegando} onClick={() => void salvarAqui()}>
+            <Icone nome="mapa" /> {pegando ? 'Pegando o GPS...' : 'Salvar localização atual'}
+          </button>
+        </>
+      )}
+      {msg && <Aviso tipo={msg.tipo}>{msg.texto}</Aviso>}
     </section>
   )
 }

@@ -1,3 +1,4 @@
+import { linkGoogleMaps, linkWaze, temLocalizacao } from '../lib/mapa'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -125,6 +126,12 @@ export default function PedidoDetalhe() {
             <div><dt className="text-stone-500">Entrega</dt><dd className="font-medium">{p.data_entrega ? data(p.data_entrega) : '—'}</dd></div>
             {p.nfe_numero && <div><dt className="text-stone-500">NF-e</dt><dd className="font-medium">{p.nfe_numero}</dd></div>}
           </dl>
+          {temLocalizacao(c) && (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <a className="btn-secundario py-1.5 text-sm" href={linkGoogleMaps(c.latitude, c.longitude)} target="_blank" rel="noreferrer"><Icone nome="mapa" /> Google Maps</a>
+              <a className="btn-secundario py-1.5 text-sm" href={linkWaze(c.latitude, c.longitude)} target="_blank" rel="noreferrer"><Icone nome="caminhao" /> Waze</a>
+            </div>
+          )}
         </div>
 
         <div className="cartao p-0">

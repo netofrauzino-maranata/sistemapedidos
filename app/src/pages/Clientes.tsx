@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BotaoFlutuante, Busca, Cabecalho, Vazio } from '../components/ui'
+import { BotaoFlutuante, Busca, Cabecalho, Icone, Vazio } from '../components/ui'
 import { IndicadorSync } from '../components/Layout'
 import { db } from '../lib/db'
 import { docFormatado, normalizar } from '../lib/formato'
@@ -40,6 +40,7 @@ export default function Clientes() {
         {lista.map((c) => (
           <Link key={c.id} to={`/clientes/${c.id}`} className={'cartao block p-3 ' + (c.ativo ? '' : 'opacity-60')}>
             <p className="flex items-center gap-2 font-semibold"><span className="truncate">{nomeCliente(c)}</span>
+              {c.latitude != null && <span title="Localização salva"><Icone nome="mapa" className="h-4 w-4 shrink-0 text-marca-700" /></span>}
               {c.eh_fornecedor && <span className="etiqueta shrink-0 bg-violet-100 text-violet-800">{ehCliente(c) ? 'Cliente e fornecedor' : 'Fornecedor'}</span>}</p>
             <p className="truncate text-xs text-stone-500">
               {c.codigo ? `Cód. ${c.codigo} · ` : ''}{docFormatado(c.cpf_cnpj) || 'Sem documento'} · {[c.bairro, c.cidade].filter(Boolean).join(', ')}

@@ -101,6 +101,12 @@ export interface Cliente {
   cidade: string | null
   uf: string | null
   codigo_ibge: string | null
+  latitude?: number | null // localização (GPS) para entrega
+  longitude?: number | null
+  localizacao_em?: string | null
+  localizacao_por?: string | null
+  localizacao_precisao?: number | null // metros
+  _loc_pendente?: boolean // localização salva no celular, falta enviar
   vendedor_id: string | null
   condicao_pagamento_id: string | null
   forma_pagamento_id: string | null

@@ -54,6 +54,25 @@ async function enviarClientes() {
   }
 }
 
+// Localização salva pelo botão "Salvar localização" (pode ser cliente de outro
+// vendedor ou sem vendedor): vai por uma função própria, que só mexe nela.
+async function enviarLocalizacoes() {
+  const pendentes = (await db.clientes.toArray()).filter((c) => c._loc_pendente)
+  for (const c of pendentes) {
+    const { data, error } = await supabase.rpc('salvar_localizacao_cliente', {
+      p_cliente: c.id, p_latitude: c.latitude ?? null, p_longitude: c.longitude ?? null, p_precisao: c.localizacao_precisao ?? null,
+    })
+    if (error) {
+      if (erroDeRede(error)) throw error
+      await db.clientes.update(c.id, { _loc_pendente: false, _erro: error.message })
+    } else if (data === true || c._sync === 'ok' || !c._sync) {
+      // false com cadastro já sincronizado = sem acesso; não fica tentando para sempre
+      await db.clientes.update(c.id, { _loc_pendente: false })
+    }
+    // false com cadastro novo ainda não enviado: tenta de novo no próximo sync
+  }
+}
+
 export function pedidoParaEnvio(p: Pedido) {
   return {
     id: p.id,
@@ -180,6 +199,7 @@ export function sincronizar(): Promise<void> {
       const { data: s } = await supabase.auth.getSession()
       if (!s.session) return
       await enviarClientes()
+      await enviarLocalizacoes()
       await enviarPedidos()
       await baixarTabela('perfis', db.perfis)
       await baixarTabela('empresa', db.empresa)
@@ -193,6 +213,10 @@ export function sincronizar(): Promise<void> {
       await baixarTabela('clientes', db.clientes, async (c) => {
         const local = await db.clientes.get((c as Cliente).id)
         if (local && local._sync && local._sync !== 'ok') return false
+        if (local?._loc_pendente) Object.assign(c, {
+          latitude: local.latitude, longitude: local.longitude, localizacao_em: local.localizacao_em,
+          localizacao_por: local.localizacao_por, localizacao_precisao: local.localizacao_precisao, _loc_pendente: true,
+        })
         ;(c as Cliente)._sync = 'ok'
         return true
       })

@@ -1,4 +1,5 @@
 import { nomeCliente } from './hooks'
+import { linkGoogleMaps, temLocalizacao } from './mapa'
 import type { Cliente, Empresa, FormaPagamento, Pedido, Perfil } from './tipos'
 
 // Carga: pedidos aprovados de um dia que o gestor escolhe para carregar
@@ -83,6 +84,7 @@ export function textoCarga(tipo: TipoRelatorioCarga, d: DadosCarga) {
   } else {
     for (const g of porCliente(d)) {
       l.push(`*${rotuloCliente(g.cliente)}*`)
+      if (temLocalizacao(g.cliente)) l.push(`  Local: ${linkGoogleMaps(g.cliente.latitude, g.cliente.longitude)}`)
       for (const p of g.pedidos) for (const i of p.itens) l.push(`  ${q(i.quantidade)} ${(i.unidade ?? '').toLowerCase()}  ${i.produto_codigo ?? ''} ${i.produto_nome ?? ''}`)
       l.push('')
     }

@@ -113,3 +113,6 @@ Azul da logo `#00268B` (marca), amarelo `#FFD200` (destaque), vermelho `#E30613`
 Fotos dos produtos: `app/public/produtos/<codigo>.webp` (800x800), lidas por `fotoDoProduto` em `lib/fotos.ts`; `foto_url` enviada pelo cadastro tem prioridade. Ao trocar fotos, suba o nome do cache `fotos-padrao-vN` em `vite.config.ts` e apague o antigo em `main.tsx`.
 Logo e mascote em `app/public/logo.png` e `app/public/mascote.png` (login, topo do Início). Logo do PDF em `app/src/assets/logo-pdf.jpg`. Ícones do app em `app/public/icon-*.png`.
 Fluxos inspirados no app que o Neto usava, mas visual próprio da Maranata.
+
+## Localização do cliente (entrega)
+`clientes.latitude/longitude` + `localizacao_em/por/precisao` (migração `20261125040000`). No cadastro, seção "Localização para entrega" (`ClienteForm.tsx`): botão pega o GPS (`pegarPosicao` em `lib/mapa.ts`, funciona offline) e grava na hora no Dexie com `_loc_pendente`; o sync envia por `salvar_localizacao_cliente` (security definer: qualquer usuário ativo que enxerga o cliente salva só a localização). Links Google Maps/Waze no cadastro, no pedido e na Carga (aba Por cliente, com "Rota no Google Maps" de até 10 paradas por link); o texto da carga por cliente leva o link do Maps.

@@ -5,6 +5,7 @@ import { db } from '../lib/db'
 import { brl, data, hojeISO, num } from '../lib/formato'
 import { useClientesMapa, useEmpresa, usePerfisMapa } from '../lib/hooks'
 import { cupomCarga, imprimir, lerConfig } from '../lib/impressora'
+import { linkGoogleMaps, linkRotaGoogle, linkWaze, temLocalizacao } from '../lib/mapa'
 import { abrirPdf, compartilharPdf, pdfCarga } from '../lib/pdf'
 import {
   ehTroca, NOME_RELATORIO, porCliente, rotuloCliente, somarItens, STATUS_CARGA, textoCarga, totaisCarga,
@@ -155,6 +156,8 @@ export default function Carga() {
           </ul>
         )}
 
+        {aba === 'clientes' && !!selecionados.length && <Rota grupos={porCliente(dados)} />}
+
         {aba === 'clientes' && porCliente(dados).map((g) => (
           <section key={g.cliente?.id ?? g.pedidos[0].id} className="cartao p-0">
             <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-4 py-2.5">
@@ -164,6 +167,14 @@ export default function Carga() {
               </div>
               <p className="shrink-0 font-bold">{brl(g.pedidos.reduce((s, p) => s + Number(p.total), 0))}</p>
             </div>
+            {temLocalizacao(g.cliente) ? (
+              <div className="grid grid-cols-2 gap-2 border-b border-stone-100 px-4 py-2">
+                <a className="btn-secundario py-1.5 text-sm" href={linkGoogleMaps(g.cliente.latitude, g.cliente.longitude)} target="_blank" rel="noreferrer"><Icone nome="mapa" /> Google Maps</a>
+                <a className="btn-secundario py-1.5 text-sm" href={linkWaze(g.cliente.latitude, g.cliente.longitude)} target="_blank" rel="noreferrer"><Icone nome="caminhao" /> Waze</a>
+              </div>
+            ) : (
+              <p className="border-b border-stone-100 px-4 py-1.5 text-xs text-stone-400">Sem localização salva{g.cliente?.logradouro ? ` · ${g.cliente.logradouro}${g.cliente.numero ? ', ' + g.cliente.numero : ''}${g.cliente.bairro ? ' - ' + g.cliente.bairro : ''}` : ''}</p>
+            )}
             <ul className="divide-y divide-stone-50">
               {g.pedidos.flatMap((p) => p.itens).map((i) => (
                 <li key={i.id} className="flex gap-3 px-4 py-1.5 text-sm">
@@ -214,5 +225,29 @@ function Total({ rotulo, valor, destaque }: { rotulo: string; valor: string; des
       <p className={'text-[11px] ' + (destaque ? 'text-marca-100' : 'text-stone-500')}>{rotulo}</p>
       <p className="truncate text-sm font-bold">{valor}</p>
     </div>
+  )
+}
+
+// Rota no Google Maps com os clientes da carga que têm localização salva
+// (o link do Google aceita até 10 pontos; acima disso abre em partes).
+function Rota({ grupos }: { grupos: ReturnType<typeof porCliente> }) {
+  const pontos = grupos.map((g) => g.cliente).filter(temLocalizacao)
+  const sem = grupos.length - pontos.length
+  const partes: typeof pontos[] = []
+  for (let i = 0; i < pontos.length; i += 10) partes.push(pontos.slice(i, i + 10))
+  return (
+    <section className="cartao space-y-2">
+      <div className="flex items-center gap-2">
+        <Icone nome="mapa" className="h-5 w-5 text-marca-700" />
+        <p className="flex-1 text-sm"><b>{pontos.length}</b> de {grupos.length} cliente(s) com localização salva</p>
+      </div>
+      {partes.map((p, i) => (
+        <a key={i} className="btn-primario w-full" href={linkRotaGoogle(p)} target="_blank" rel="noreferrer">
+          <Icone nome="caminhao" /> Rota no Google Maps{partes.length > 1 ? ` (parte ${i + 1})` : ''}
+        </a>
+      ))}
+      {sem > 0 && <p className="text-xs text-stone-500">{sem} sem localização: o vendedor salva no cadastro do cliente, em Localização para entrega.</p>}
+      {pontos.length > 1 && <p className="text-xs text-stone-500">O Google segue a ordem da lista (por nome). Dentro do Maps dá para arrastar as paradas.</p>}
+    </section>
   )
 }
