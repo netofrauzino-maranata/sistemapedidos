@@ -3,23 +3,7 @@ import { Aviso, Cabecalho, Campo, Icone } from '../components/ui'
 import { db } from '../lib/db'
 import { useCategorias, useEmpresa } from '../lib/hooks'
 import { abrirPdf, compartilharPdf, pdfCatalogo } from '../lib/pdf'
-import { fotoDoProduto } from '../lib/fotos'
-
-async function paraDataUrl(url: string): Promise<string | null> {
-  try {
-    const r = await fetch(url)
-    if (!r.ok) return null
-    // converte para JPEG (o PDF não lê WebP) e reduz para o tamanho do cartão
-    const bmp = await createImageBitmap(await r.blob())
-    const lado = 480, k = Math.min(1, lado / Math.max(bmp.width, bmp.height))
-    const c = document.createElement('canvas')
-    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k)
-    const g = c.getContext('2d')!
-    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height)
-    g.drawImage(bmp, 0, 0, c.width, c.height)
-    return c.toDataURL('image/jpeg', 0.85)
-  } catch { return null }
-}
+import { fotoDoProduto, paraDataUrl } from '../lib/fotos'
 
 export default function Catalogo() {
   const categorias = useCategorias()

@@ -65,96 +65,188 @@ export interface DadosPedidoPdf {
   condicao?: CondicaoPagamento | null
   forma?: FormaPagamento | null
   gtins?: Map<string, string | null> // produto_id -> código de barras
+  fotos?: Map<string, string> // produto_id -> dataURL (JPEG)
 }
 
-export function pdfPedido({ pedido: p, cliente: c, vendedor, empresa, condicao, forma, gtins }: DadosPedidoPdf) {
+// Espelho do pedido no modelo do sistema antigo (vendas mobile): canhoto de recebimento,
+// cabeçalho da empresa, dados do cliente em linhas, itens com foto e totais no rodapé.
+export function pdfPedido({ pedido: p, cliente: c, vendedor, empresa, condicao, forma, gtins, fotos }: DadosPedidoPdf) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
-  const w = doc.internal.pageSize.getWidth()
-  const titulo = p.status === 'orcamento' ? 'ORÇAMENTO' : 'PEDIDO DE VENDA'
-  cabecalho(doc, empresa, titulo, `${p.numero ? 'Nº ' + p.numero : 'Provisório'}  ·  ${dataHora(p.data_pedido)}`)
+  const w = doc.internal.pageSize.getWidth(), h = doc.internal.pageSize.getHeight()
+  const mx = 8, dir = w - mx
+  const F = 'courier'
+  const troca = forma?.conta_como_venda === false
+  const tipo = p.status === 'orcamento' ? 'ORÇAMENTO' : troca ? 'TROCA' : 'PEDIDO'
+  const numero = p.numero ? String(p.numero) : 'provisório'
+  const empresaNome = empresa?.razao_social || 'Maranata Distribuidora'
+  const preto = () => doc.setTextColor(0, 0, 0)
+  const tracejado = (y: number) => {
+    doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.2); doc.setLineDashPattern([0.8, 0.6], 0)
+    doc.line(mx, y, dir, y); doc.setLineDashPattern([], 0)
+  }
+  const fonte = (tam: number, negrito = false) => { doc.setFont(F, negrito ? 'bold' : 'normal'); doc.setFontSize(tam) }
+  preto()
 
-  // bloco cliente
-  let y = 34
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...AZUL)
-  doc.text('CLIENTE', 10, y)
-  doc.setTextColor(40, 40, 40); doc.setFontSize(10)
-  doc.text(c?.razao_social ?? '—', 10, y + 5)
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5)
-  const linhasCli = [
-    [c?.nome_fantasia && `Fantasia: ${c.nome_fantasia}`, c?.cpf_cnpj && `${c.tipo_pessoa === 'F' ? 'CPF' : 'CNPJ'}: ${docFormatado(c.cpf_cnpj)}`, c?.ie && `IE: ${c.ie}`].filter(Boolean).join('   '),
-    [c?.logradouro && `${c.logradouro}, ${c.numero ?? 's/n'}${c.complemento ? ' ' + c.complemento : ''}`, c?.bairro, c?.cidade && `${c.cidade}/${c.uf ?? ''}`, c?.cep && `CEP ${c.cep}`].filter(Boolean).join(' · '),
-    [c?.telefone && `Tel: ${foneFormatado(c.telefone)}`, c?.whatsapp && `WhatsApp: ${foneFormatado(c.whatsapp)}`, c?.contato && `Contato: ${c.contato}`].filter(Boolean).join('   '),
+  // canhoto de recebimento
+  const cidadeCli = [c?.cidade, c?.uf].filter(Boolean).join(' - ')
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.3)
+  doc.rect(mx, 6, w - 2 * mx, 24)
+  fonte(7)
+  doc.text(`Recebemos de ${empresaNome} os produtos e/ou serviços constantes ${troca && p.status !== 'orcamento' ? 'na troca' : 'no ' + tipo.toLowerCase()} ${numero}.`, mx + 2, 10, { maxWidth: w - 2 * mx - 4 })
+  doc.text(`Destinatário: ${c?.razao_social ?? '—'}, ${c?.logradouro ?? ''}${c?.numero ? ', nro. ' + c.numero : ''} - Bairro: ${c?.bairro ?? ''} Cidade: ${cidadeCli}.`, mx + 2, 13.5, { maxWidth: w - 2 * mx - 4 })
+  doc.text(`Emissão: ${data(p.data_pedido)}    Valor total: ${brl(p.total)}`, mx + 2, 17)
+  doc.line(mx, 20, dir, 20); doc.line(mx + 62, 20, mx + 62, 30)
+  fonte(6.5)
+  doc.text('DATA DO RECEBIMENTO: ____/____/______', mx + 2, 26)
+  doc.text('IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR: ______________________________', mx + 64, 26)
+
+  // empresa
+  let y = 37
+  fonte(12, true); doc.text(empresaNome, mx, y, { maxWidth: w - 2 * mx - 50 })
+  fonte(7.5)
+  const linhasEmp = [
+    [empresa?.cnpj && `CNPJ: ${docFormatado(empresa.cnpj)}`, empresa?.ie && `IE: ${empresa.ie}`].filter(Boolean).join('  '),
+    empresa?.logradouro ? `Endereço: ${empresa.logradouro}, nro. ${empresa.numero ?? 's/n'}${empresa.bairro ? '  Bairro: ' + empresa.bairro : ''}` : '',
+    empresa?.cidade ? `Cidade: ${empresa.cidade}${empresa.uf ? '-' + empresa.uf : ''}${empresa.cep ? '  CEP: ' + empresa.cep : ''}` : '',
+    [empresa?.telefone, empresa?.whatsapp].filter(Boolean).length ? `Fones: ${[empresa?.telefone, empresa?.whatsapp].filter(Boolean).map((t) => foneFormatado(t)).join(' / ')}` : '',
+    empresa?.email ? `E-mail: ${empresa.email}` : '',
   ].filter(Boolean)
-  linhasCli.forEach((l, i) => doc.text(l, 10, y + 10 + i * 4.2, { maxWidth: w - 20 }))
-  y = y + 10 + linhasCli.length * 4.2 + 2
+  linhasEmp.forEach((l, i) => doc.text(l, mx, y + 4 + i * 3.4))
+  // logo pequena à direita
+  const lh = 16, lw = lh * 520 / 265
+  doc.addImage(logoPdf, 'JPEG', dir - lw, 32, lw, lh)
+  y = Math.max(y + 4 + linhasEmp.length * 3.4, 50) + 2
+  fonte(7.5); doc.text(dataHora(new Date().toISOString()), mx, y)
+  fonte(9, true); doc.text(`${tipo} N°: ${numero}`, w / 2, y, { align: 'center' })
+  if (p.status !== 'orcamento') { fonte(7.5); doc.text(`Situação: ${STATUS_LABEL[p.status]}`, dir, y, { align: 'right' }) }
+  y += 2
+  tracejado(y)
 
-  // condições
-  doc.setDrawColor(220, 220, 220); doc.line(10, y, w - 10, y)
-  doc.setFontSize(8.5)
-  const info = [
-    `Vendedor: ${vendedor?.nome ?? '—'}`,
-    `Pagamento: ${[condicao?.nome, forma?.nome].filter(Boolean).join(' / ') || '—'}`,
-    p.data_entrega ? `Entrega: ${data(p.data_entrega)}` : '',
-    `Situação: ${STATUS_LABEL[p.status]}`,
-  ].filter(Boolean)
-  doc.text(info.join('     '), 10, y + 5)
-  y += 9
+  // cliente
+  y += 4
+  const campo = (rot: string, val: string, x: number, yy: number, negrito = false) => {
+    fonte(7.5); doc.text(rot, x, yy)
+    fonte(7.5, negrito); doc.text(val, x + doc.getTextWidth(rot) + 1, yy, { maxWidth: x < w / 2 ? 118 - doc.getTextWidth(rot) : dir - x - doc.getTextWidth(rot) - 1 })
+  }
+  const x2 = 132, lh2 = 3.6
+  const esq: [string, string, boolean?][] = [
+    ['Razão social.:', `${c?.codigo ? c.codigo + ' ' : ''}${c?.razao_social ?? '—'}`, true],
+    ['Nome fantasia:', c?.nome_fantasia ?? ''],
+    ['Fones/e-mail.:', [c?.telefone && foneFormatado(c.telefone), c?.whatsapp && foneFormatado(c.whatsapp), c?.email].filter(Boolean).join(' / ')],
+    ['Logradouro...:', c?.logradouro ? `${c.logradouro}, n° ${c.numero ?? 's/n'}` : ''],
+    ['Complemento..:', c?.complemento ?? ''],
+    ['Bairro.......:', c?.bairro ?? ''],
+    ['Localidade...:', [cidadeCli, c?.cep && `CEP ${c.cep}`].filter(Boolean).join('  ')],
+    ['Vendedor.....:', vendedor?.nome ?? '—'],
+    ['Pagamento....:', [forma?.nome, condicao?.nome].filter(Boolean).join(' / ') || '—'],
+  ]
+  esq.forEach(([r, v, n], i) => campo(r, v, mx, y + i * lh2, n))
+  const dirCampos: [string, string][] = [
+    ['CNPJ/CPF.....:', c?.cpf_cnpj ? docFormatado(c.cpf_cnpj) : ''],
+    ['IE...........:', c?.ie ?? ''],
+    ['Emissão......:', dataHora(p.data_pedido)],
+    ...(p.data_entrega ? [['Entrega......:', data(p.data_entrega)] as [string, string]] : []),
+  ]
+  dirCampos.forEach(([r, v], i) => campo(r, v, x2, y + (i + 1) * lh2))
+  y += esq.length * lh2
+  fonte(7.5); doc.text('Observações:', mx, y)
+  let obsAlt = 0
+  if (p.observacao) {
+    const obs = doc.splitTextToSize(p.observacao, w - 2 * mx - 22)
+    doc.text(obs, mx + 20, y); obsAlt = (obs.length - 1) * 3.3
+  }
+  y += obsAlt + 1.5
+  if (troca) {
+    y += 3
+    doc.setFillColor(230, 230, 230); doc.rect(mx, y - 3.5, w - 2 * mx, 5.5, 'F')
+    fonte(9, true); doc.text('*** TROCA - NÃO É VENDA ***', w / 2, y + 0.3, { align: 'center' })
+    y += 3
+  }
+  tracejado(y)
 
+  // itens (na ordem de digitação)
+  const alt = 18
+  const bruto = (i: (typeof p.itens)[number]) => Math.round(i.quantidade * i.preco_unitario * 100) / 100
   autoTable(doc, {
-    startY: y,
-    head: [['#', 'Código', 'Produto', 'Código de barras', 'Un', 'Qtd', 'Preço', 'Desc.', 'Total']],
-    body: p.itens.map((i, n) => [
-      n + 1, i.produto_codigo ?? '', i.produto_nome ?? '', gtins?.get(i.produto_id) ?? '', i.unidade ?? '', num(i.quantidade),
-      brl(i.preco_unitario), i.desconto ? brl(i.desconto) : '', brl(i.total),
+    startY: y + 1,
+    head: [['', 'Código/Descrição', 'Cód.barras', 'Unid.', 'Qtde.', 'Vlr. unit.', 'Desconto', 'Vlr. total']],
+    body: p.itens.map((i) => [
+      '', `${i.produto_codigo ?? ''} ${i.produto_nome ?? ''}`.trim(), gtins?.get(i.produto_id) ?? '', i.unidade ?? '',
+      num(i.quantidade), brl(i.preco_unitario).replace('R$', '').trim(), i.desconto ? brl(i.desconto).replace('R$', '').trim() : '',
+      brl(i.total).replace('R$', '').trim(),
     ]),
-    theme: 'striped',
-    headStyles: { fillColor: AZUL, fontSize: 8 },
-    bodyStyles: { fontSize: 8, minCellHeight: 13, valign: 'middle' },
-    alternateRowStyles: { fillColor: [243, 246, 252] },
+    theme: 'plain',
+    rowPageBreak: 'avoid',
+    styles: { font: F, fontSize: 7.5, textColor: [0, 0, 0], cellPadding: { top: 1.5, bottom: 1, left: 1, right: 1 } },
+    headStyles: { fontStyle: 'normal', minCellHeight: 6, valign: 'middle' },
+    bodyStyles: { minCellHeight: alt, valign: 'top' },
     columnStyles: {
-      0: { cellWidth: 6, halign: 'center' }, 1: { cellWidth: 13 }, 3: { cellWidth: 34, fontSize: 6.5, halign: 'center', valign: 'bottom', cellPadding: { top: 1, bottom: 0.8, left: 1, right: 1 } },
-      4: { cellWidth: 9, halign: 'center' }, 5: { halign: 'right', cellWidth: 11 }, 6: { halign: 'right', cellWidth: 19 },
-      7: { halign: 'right', cellWidth: 16 }, 8: { halign: 'right', cellWidth: 21, fontStyle: 'bold' },
+      0: { cellWidth: 18 }, 2: { cellWidth: 30, halign: 'center' }, 3: { cellWidth: 11, halign: 'center' },
+      4: { cellWidth: 16, halign: 'right' }, 5: { cellWidth: 19, halign: 'right' }, 6: { cellWidth: 17, halign: 'right' },
+      7: { cellWidth: 20, halign: 'right' },
     },
-    margin: { left: 10, right: 10 },
-    // desenha as barras em cima do número
+    margin: { left: mx, right: mx, top: 10, bottom: 16 },
+    didParseCell: (d) => { if (d.section === 'head' && d.column.index >= 4) d.cell.styles.halign = 'right' },
     didDrawCell: (d) => {
-      if (d.section !== 'body' || d.column.index !== 3) return
-      const mod = modulosEan(String(d.cell.raw ?? ''))
-      if (!mod) return
-      const larg = d.cell.width - 4, x0 = d.cell.x + 2, mw = larg / mod.length
-      const alt = d.cell.height - 6.5
-      doc.setFillColor(0, 0, 0)
-      for (let k = 0; k < mod.length; k++) if (mod[k] === '1') doc.rect(x0 + k * mw, d.cell.y + 1, mw, alt, 'F')
+      if (d.section === 'head' && d.column.index === 0) tracejado(d.cell.y + d.cell.height)
+      if (d.section !== 'body') return
+      const it = p.itens[d.row.index]
+      if (!it) return
+      if (d.column.index === 0) {
+        // foto do produto com moldura
+        const s = alt - 2, x0 = d.cell.x + 1, y0 = d.cell.y + 1
+        doc.setDrawColor(170, 170, 170); doc.setLineWidth(0.2); doc.rect(x0, y0, s, s)
+        const foto = fotos?.get(it.produto_id)
+        if (foto) {
+          try {
+            const ip = doc.getImageProperties(foto), k = Math.min((s - 1) / ip.width, (s - 1) / ip.height)
+            const iw = ip.width * k, ih = ip.height * k
+            doc.addImage(foto, x0 + (s - iw) / 2, y0 + (s - ih) / 2, iw, ih, undefined, 'FAST')
+          } catch { /* imagem inválida */ }
+        }
+        // linha separando os itens
+        doc.setDrawColor(150, 150, 150); doc.line(x0 + s + 1, d.cell.y + d.cell.height, dir, d.cell.y + d.cell.height)
+      }
+      if (d.column.index === 2) {
+        // código de barras desenhado embaixo do número
+        const mod = modulosEan(String(d.cell.raw ?? ''))
+        if (!mod) return
+        const larg = d.cell.width - 3, x0 = d.cell.x + 1.5, mw = larg / mod.length
+        doc.setFillColor(0, 0, 0)
+        for (let k = 0; k < mod.length; k++) if (mod[k] === '1') doc.rect(x0 + k * mw, d.cell.y + 5.5, mw, 7, 'F')
+      }
     },
   })
 
   // totais
-  let ty = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6
-  if (ty > doc.internal.pageSize.getHeight() - 50) { doc.addPage(); ty = 20 }
-  const linhas: [string, string][] = [['Subtotal', brl(p.subtotal)]]
-  if (p.desconto) linhas.push(['Desconto', '- ' + brl(p.desconto)])
-  if (p.frete) linhas.push(['Frete', brl(p.frete)])
-  doc.setFontSize(9)
-  linhas.forEach(([a, b], i) => { doc.text(a, w - 60, ty + i * 5); doc.text(b, w - 10, ty + i * 5, { align: 'right' }) })
-  const yt = ty + linhas.length * 5 + 2
-  doc.setFillColor(...AZUL); doc.roundedRect(w - 72, yt - 4.5, 62, 9, 2, 2, 'F')
-  doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
-  doc.text('TOTAL', w - 68, yt + 1.6); doc.text(brl(p.total), w - 13, yt + 1.6, { align: 'right' })
-  doc.setTextColor(40, 40, 40); doc.setFont('helvetica', 'normal')
-  const qtdItens = p.itens.reduce((s, i) => s + i.quantidade, 0)
-  doc.setFontSize(8.5); doc.text(`${p.itens.length} produto(s) · ${num(qtdItens)} volume(s)`, 10, ty)
+  let ty = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 1
+  if (ty > h - 58) { doc.addPage(); ty = 14 }
+  tracejado(ty)
+  ty += 4
+  const somaBruto = p.itens.reduce((s, i) => s + bruto(i), 0)
+  const somaDescItens = p.itens.reduce((s, i) => s + (Number(i.desconto) || 0), 0)
+  const volumes = p.itens.reduce((s, i) => s + Number(i.quantidade), 0)
+  const v = (n: number) => brl(n).replace('R$', '').trim()
+  fonte(7.5, true)
+  doc.text(`${p.itens.length} ${p.itens.length === 1 ? 'item' : 'itens'}`, mx, ty)
+  doc.text(`Volumes: ${num(volumes)}`, 95, ty)
+  doc.text(v(somaBruto), dir - 37, ty, { align: 'right' })
+  doc.text(v(somaDescItens), dir - 20, ty, { align: 'right' })
+  doc.text(v(p.subtotal), dir - 1, ty, { align: 'right' })
+  fonte(7.5)
+  ty += 4.5
+  const pct = p.subtotal ? (Number(p.desconto) / Number(p.subtotal)) * 100 : 0
+  doc.text(`Desconto (${num(Math.round(pct * 100) / 100)}%): ${v(Number(p.desconto) || 0)}`, dir - 1, ty, { align: 'right' })
+  if (p.frete) { ty += 4; doc.text(`Frete: ${v(p.frete)}`, dir - 1, ty, { align: 'right' }) }
 
-  if (p.observacao) {
-    doc.setFont('helvetica', 'bold'); doc.text('Observações', 10, ty + 7)
-    doc.setFont('helvetica', 'normal'); doc.text(p.observacao, 10, ty + 11.5, { maxWidth: w - 90 })
-  }
-
-  // assinatura
-  const ya = Math.max(yt + 28, ty + 30)
-  doc.setDrawColor(150, 150, 150); doc.line(10, ya, 90, ya)
-  doc.setFontSize(8); doc.text('Assinatura do cliente', 10, ya + 4)
-  doc.text('Documento sem valor fiscal.', w - 10, ya + 4, { align: 'right' })
+  // assinaturas e total
+  const ya = ty + 14
+  fonte(7.5)
+  doc.text('------------------------', 68, ya - 3.5, { align: 'center' }); doc.text('Ass. vendedor', 68, ya, { align: 'center' })
+  doc.text('------------------------', 122, ya - 3.5, { align: 'center' }); doc.text('Ass. cliente', 122, ya, { align: 'center' })
+  doc.text(troca ? 'Troca - não é venda' : 'Sem valor fiscal', mx, ya)
+  doc.setFillColor(200, 200, 200); doc.rect(dir - 48, ya - 4.2, 48, 6.5, 'F')
+  fonte(9, true); doc.text(`Total: ${brl(p.total)}`, dir - 1.5, ya, { align: 'right' })
 
   rodape(doc, empresa?.rodape_pedido)
   return doc

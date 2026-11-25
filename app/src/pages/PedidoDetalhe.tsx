@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useOnline } from '../components/Layout'
 import { Aviso, Cabecalho, Icone } from '../components/ui'
@@ -9,6 +9,7 @@ import { db } from '../lib/db'
 import { brl, data, dataHora, docFormatado, foneFormatado, num, soDigitos } from '../lib/formato'
 import { nomeCliente } from '../lib/hooks'
 import { abrirPdf, compartilharPdf, pdfPedido } from '../lib/pdf'
+import { fotoDoProduto, paraDataUrl } from '../lib/fotos'
 import { imprimir, lerConfig, montarCupom } from '../lib/impressora'
 import { supabase } from '../lib/supabase'
 import { sincronizar } from '../lib/sync'
@@ -25,15 +26,29 @@ export default function PedidoDetalhe() {
   const dados = useLiveQuery(async () => {
     const pedido = await db.pedidos.get(id!)
     if (!pedido) return null
-    const gtins = new Map((await db.produtos.bulkGet(pedido.itens.map((i) => i.produto_id))).filter(Boolean).map((x) => [x!.id, x!.gtin]))
+    const prods = (await db.produtos.bulkGet(pedido.itens.map((i) => i.produto_id))).filter(Boolean)
+    const gtins = new Map(prods.map((x) => [x!.id, x!.gtin]))
+    const urlsFotos = new Map(prods.map((x) => [x!.id, fotoDoProduto(x!)]))
     const [cliente, vendedor, empresa, condicao, forma] = await Promise.all([
       db.clientes.get(pedido.cliente_id), db.perfis.get(pedido.vendedor_id), db.empresa.get(1),
       pedido.condicao_pagamento_id ? db.condicoes.get(pedido.condicao_pagamento_id) : undefined,
       pedido.forma_pagamento_id ? db.formas.get(pedido.forma_pagamento_id) : undefined,
     ])
     const tabela = cliente?.tabela_preco_id ? (await db.tabelasPreco.get(cliente.tabela_preco_id))?.nome ?? null : null
-    return { pedido, cliente, vendedor, empresa, condicao, forma, gtins, tabela }
+    return { pedido, cliente, vendedor, empresa, condicao, forma, gtins, urlsFotos, tabela }
   }, [id])
+
+  // fotos dos itens já convertidas para o PDF (carrega ao abrir a tela, para o botão gerar na hora)
+  const [fotos, setFotos] = useState<Map<string, string>>(new Map())
+  const chaveFotos = dados ? [...dados.urlsFotos].map(([k, u]) => k + u).join() : ''
+  useEffect(() => {
+    if (!dados) return
+    let vivo = true
+    void Promise.all([...dados.urlsFotos].filter(([, u]) => u).map(async ([k, u]) => [k, await paraDataUrl(u!, 300)] as const))
+      .then((l) => { if (vivo) setFotos(new Map(l.filter(([, d]) => d) as [string, string][])) })
+    return () => { vivo = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveFotos])
 
   if (dados === undefined) return null
   if (dados === null) return <><Cabecalho titulo="Pedido" voltar /><p className="p-6 text-center">Pedido não encontrado.</p></>
@@ -136,8 +151,8 @@ export default function PedidoDetalhe() {
         {gestor && p.observacao_interna && <div className="cartao text-sm"><b>Interna:</b> {p.observacao_interna}</div>}
 
         <div className="grid grid-cols-2 gap-2">
-          <button className="btn-primario" onClick={() => void compartilharPdf(pdfPedido(dados), nomeArq, `Pedido ${p.numero ?? ''}`)}><Icone nome="pdf" /> Enviar PDF</button>
-          <button className="btn-secundario" onClick={() => abrirPdf(pdfPedido(dados))}><Icone nome="pdf" /> Ver / imprimir</button>
+          <button className="btn-primario" onClick={() => void compartilharPdf(pdfPedido({ ...dados, fotos }), nomeArq, `Pedido ${p.numero ?? ''}`)}><Icone nome="pdf" /> Enviar PDF</button>
+          <button className="btn-secundario" onClick={() => abrirPdf(pdfPedido({ ...dados, fotos }))}><Icone nome="pdf" /> Ver / imprimir</button>
           <button className="btn-secundario" onClick={whatsapp}><Icone nome="whatsapp" /> WhatsApp</button>
           <button className="btn-secundario" onClick={() => void duplicar()}><Icone nome="mais" /> Duplicar venda</button>
           <button className="btn-secundario col-span-2" onClick={() => void imprimirCupom()}><Icone nome="impressora" /> Imprimir na térmica</button>

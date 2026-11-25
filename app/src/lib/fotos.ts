@@ -11,3 +11,19 @@ export function fotoDoProduto(p: Pick<Produto, 'codigo' | 'foto_url'>): string |
   if (p.foto_url) return p.foto_url
   return p.codigo && CODIGOS_COM_FOTO.has(p.codigo) ? `/produtos/${p.codigo}.webp` : null
 }
+
+// Converte a foto para JPEG em dataURL (o PDF não lê WebP), reduzida para no máximo `lado` px.
+export async function paraDataUrl(url: string, lado = 480): Promise<string | null> {
+  try {
+    const r = await fetch(url)
+    if (!r.ok) return null
+    const bmp = await createImageBitmap(await r.blob())
+    const k = Math.min(1, lado / Math.max(bmp.width, bmp.height))
+    const c = document.createElement('canvas')
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k)
+    const g = c.getContext('2d')!
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height)
+    g.drawImage(bmp, 0, 0, c.width, c.height)
+    return c.toDataURL('image/jpeg', 0.85)
+  } catch { return null }
+}

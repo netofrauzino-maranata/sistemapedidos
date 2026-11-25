@@ -9,7 +9,7 @@ Escrito em português. Responda ao Neto em português, de forma prática.
 - Entrada de mercadoria (cria lote, soma estoque, atualiza custo)
 - Clientes (CPF/CNPJ, IE, endereço completo, código IBGE), com busca automática por CNPJ (BrasilAPI) e CEP (ViaCEP)
 - Pedidos de venda **offline**, com baixa automática de estoque pelo lote que vence primeiro (FEFO)
-- PDF do pedido e catálogo em PDF, gerados no próprio celular
+- PDF do pedido (espelho no modelo do sistema antigo: canhoto, fotos dos itens, código de barras) e catálogo em PDF, gerados no próprio celular
 - Relatórios (vendas por dia, vendedor, cliente, produto, positivação)
 - Exportação das vendas para o emissor de NF-e (CSV ou JSON). **Não emite nota.**
 
