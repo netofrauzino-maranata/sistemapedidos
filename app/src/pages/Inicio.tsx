@@ -49,7 +49,7 @@ export default function Inicio() {
 
   return (
     <>
-      <Cabecalho logo titulo={`Olá, ${perfil?.nome?.split(' ')[0] ?? ''}`} acao={<IndicadorSync />} />
+      <Cabecalho logo titulo={`Olá, ${perfil?.nome ?? ''}`} acao={<IndicadorSync />} />
       <main className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="cartao bg-marca-700 text-white ring-0">
