@@ -4,7 +4,7 @@
 //     "clássicas" como a MPT-III. O app Maranata manda o cupom pronto para o RawBT imprimir.
 //  2. Bluetooth direto pelo Chrome: só para impressoras Bluetooth LE (BLE).
 // A configuração fica guardada no próprio celular.
-import { data, dataHora, docFormatado, foneFormatado } from './formato'
+import { data, dataHora, foneFormatado } from './formato'
 import type { Cliente, CondicaoPagamento, Empresa, FormaPagamento, Pedido, Perfil } from './tipos'
 import { NOME_RELATORIO, porCliente, rotuloCliente, somarItens, totaisCarga, type DadosCarga, type TipoRelatorioCarga } from './carga'
 
@@ -136,46 +136,40 @@ export async function montarCupom(d: DadosCupom, cfg: ConfigImpressora): Promise
   const end = (o?: { logradouro?: string | null; numero?: string | null; complemento?: string | null; bairro?: string | null; cidade?: string | null; uf?: string | null } | null) =>
     o?.logradouro ? `Endereco:${o.logradouro}, nro.${o.numero || 'SN'}${o.complemento ? ' ' + o.complemento : ''} - Bairro:${o.bairro ?? ''} Cidade:${o.cidade ?? ''} - ${o.uf ?? ''}` : ''
 
-  // ----- empresa (mesmo modelo do app antigo) -----
+  // Modelo do cupom do sistema antigo (Vendas Mobile), 48 colunas na bobina de 80 mm.
+  // ----- empresa -----
   if (cfg.qr && cfg.qrTopo && cfg.qrTexto) c.qr(cfg.qrTexto)
   if (cfg.logo) { try { c.imagem(await logoMonocromatico(pontos)) } catch { /* sem logo */ } }
   c.quebrado(e?.razao_social || 'Maranata Distribuidora')
-  if (e?.nome_fantasia && e.nome_fantasia !== e.razao_social) c.quebrado(e.nome_fantasia)
-  if (e?.cnpj) c.linha('CNPJ ' + e.cnpj)
-  if (e?.ie) c.linha('Insc. Estadual ' + e.ie)
-  if (e?.email) c.linha('Email:' + e.email)
-  if (e?.telefone) c.linha('Fone:' + foneFormatado(e.telefone))
-  const endEmp = end(e)
-  if (endEmp) { c.linha(); c.quebrado(endEmp) }
-  c.linha()
-  c.linha('Data:' + dataHora(new Date().toISOString()))
-  if (d.vendedor?.nome) c.linha('Vend.:' + d.vendedor.nome)
+  c.linha('Data:' + new Date().toLocaleString('pt-BR').replace(',', ''))
+  if (d.vendedor?.nome) c.linha('Vend.:' + d.vendedor.nome + '.')
   c.separador()
 
   // ----- pedido e cliente -----
   const titulo = p.status === 'orcamento' ? 'ORCAMENTO' : troca ? 'TROCA' : 'PEDIDO'
-  c.negrito().alto().linha(`${titulo}:${p.numero ?? 'provisorio'}`).alto(false).negrito(false)
-  c.linha('Emissao:' + dataHora(p.data_pedido))
+  if (troca) c.negrito().alto()
+  c.linha(`${titulo}:${p.numero ?? 'provisorio'}`)
+  if (troca) c.alto(false).negrito(false)
+  c.linha('Emissao:' + dataHora(p.data_pedido).replace(',', ''))
   c.quebrado(`Razao:${cl?.codigo ? cl.codigo + '-' : ''}${cl?.razao_social ?? ''}`)
   if (cl?.nome_fantasia) c.quebrado('Nome fantasia:' + cl.nome_fantasia)
-  if (cl?.cpf_cnpj) c.linha('CNPJ/CPF:' + docFormatado(cl.cpf_cnpj))
-  if (cl?.ie) c.linha('Insc. Estadual:' + cl.ie)
+  if (cl?.cpf_cnpj) c.linha('CNPJ/CPF:' + cl.cpf_cnpj.replace(/\D/g, ''))
   if (cl?.telefone) c.linha('Fone:' + foneFormatado(cl.telefone))
   const endCli = end(cl)
   if (endCli) c.quebrado(endCli)
-  c.linha('Forma cob.:' + (d.forma?.nome ?? ''))
-  c.linha('Cond.pagto.:' + (d.condicao?.nome ?? ''))
-  c.linha('Tabela de preco:' + (d.tabela ?? ''))
+  const pagto = [d.forma?.nome, d.condicao?.nome].filter(Boolean).join(' - ')
+  if (pagto) c.quebrado('Pagto.:' + pagto)
   if (p.data_entrega) c.linha('Entrega:' + data(p.data_entrega))
   c.separador()
 
   // ----- itens, na ordem digitada -----
   c.linha('CODIGO DESCRICAO')
-  c.par('  QTD. UN. VL UNIT', 'VL ITEM')
+  c.par('    QTD. UN. VL UNIT', 'VL ITEM')
   c.separador()
+  c.linha()
   for (const i of p.itens) {
     c.quebrado(`${i.produto_codigo ?? ''} ${(i.produto_nome ?? '').toUpperCase()}`.trim())
-    c.par(`  ${qtdTxt(i.quantidade)} ${(i.unidade ?? '').toLowerCase()} X R$ ${reais(i.preco_unitario)}${i.desconto ? ` -${reais(i.desconto)}` : ''}`, reais(i.total))
+    c.par(`    ${qtdTxt(i.quantidade)} ${(i.unidade ?? '').toLowerCase()} X R$ ${reais(i.preco_unitario)}${i.desconto ? ` -${reais(i.desconto)}` : ''}`, reais(i.total))
     const g = d.gtins?.get(i.produto_id)
     if (cfg.codigoBarras && g) c.ean(g)
   }
@@ -183,19 +177,23 @@ export async function montarCupom(d: DadosCupom, cfg: ConfigImpressora): Promise
 
   // ----- totais -----
   const vols = p.itens.reduce((s, i) => s + Number(i.quantidade), 0)
-  c.par(`${p.itens.length} itens`, `Subtotal:R$ ${reais(p.subtotal)}`)
+  c.par(`${p.itens.length} ${p.itens.length === 1 ? 'item' : 'itens'}`, `Subtotal:R$ ${reais(p.subtotal)}`)
   c.linha(`${qtdTxt(vols)} Vols.`)
+  c.linha()
   const pct = p.subtotal ? Math.round((p.desconto / p.subtotal) * 1000) / 10 : 0
   c.direita(`Desc.(${qtdTxt(pct)}%):R$ ${reais(p.desconto)}`)
-  c.direita(`Frete: R$ ${reais(p.frete)}`)
-  c.negrito().alto().direita(`Total: R$ ${reais(p.total)}`).alto(false).negrito(false)
+  if (Number(p.frete)) c.direita(`Frete:R$ ${reais(p.frete)}`)
+  c.direita(`Total: R$ ${reais(p.total)}`)
   if (p.observacao) { c.linha(); c.quebrado('Obs:' + p.observacao) }
   if (troca) { c.linha(); c.centro().negrito().linha('*** TROCA - NAO E VENDA ***').negrito(false).centro(false) }
 
+  // ----- rodapé (PIX) -----
   const rodape = cfg.rodape || e?.rodape_pedido
-  c.linha()
-  if (rodape) { c.centro(); c.quebrado(rodape); c.centro(false) }
-  c.centro().linha('APP MARANATA PEDIDOS').centro(false)
+  c.linha(); c.linha()
+  c.centro()
+  if (rodape) c.quebrado(rodape)
+  c.linha('APP MARANATA PEDIDOS')
+  c.centro(false)
   if (cfg.qr && !cfg.qrTopo && cfg.qrTexto) { c.linha(); c.qr(cfg.qrTexto) }
   for (let k = 0; k < Math.max(0, cfg.avancar); k++) c.linha()
   c.raw(0x1d, 0x56, 0x42, 0) // corta o papel (se a impressora tiver guilhotina)
