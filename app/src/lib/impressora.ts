@@ -319,15 +319,14 @@ function cupomCarregamento(d: DadosCarga, cfg: ConfigImpressora): Uint8Array {
   c.centro(false)
   c.separador()
 
-  // "[ ] QTD. UN. CODIGO DESCRICAO"; a descrição quebra alinhada na própria coluna
+  // "[ ] QTD. UN. DESCRICAO" (sem código, pedido do Neto em 26/11); a descrição quebra alinhada na própria coluna
   const larguraQtd = Math.max(4, ...itens.map((i) => qtdTxt(i.quantidade).length))
-  const larguraCod = Math.max(3, ...itens.map((i) => i.codigo.length))
-  const recuo = 4 + larguraQtd + 1 + 3 + 1 + larguraCod + 1
-  c.linha('    ' + 'QTD.'.padStart(larguraQtd) + ' UN. ' + 'COD'.padEnd(larguraCod) + ' DESCRICAO')
+  const recuo = 4 + larguraQtd + 1 + 3 + 1
+  c.linha('    ' + 'QTD.'.padStart(larguraQtd) + ' UN. DESCRICAO')
   c.separador()
   c.raw(0x1b, 0x33, 44) // um pouco mais de espaço entre linhas para ticar a caneta
   for (const i of itens) {
-    const ini = '[ ] ' + qtdTxt(i.quantidade).padStart(larguraQtd) + ' ' + i.unidade.toLowerCase().slice(0, 3).padEnd(3) + ' ' + i.codigo.padEnd(larguraCod) + ' '
+    const ini = '[ ] ' + qtdTxt(i.quantidade).padStart(larguraQtd) + ' ' + i.unidade.toLowerCase().slice(0, 3).padEnd(3) + ' '
     const cabe = Math.max(8, colunas - recuo)
     const palavras = i.nome.toUpperCase().split(/\s+/).filter(Boolean)
     const linhas: string[] = []; let l = ''
