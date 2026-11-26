@@ -4,7 +4,7 @@
 //     "clássicas" como a MPT-III. O app Maranata manda o cupom pronto para o RawBT imprimir.
 //  2. Bluetooth direto pelo Chrome: só para impressoras Bluetooth LE (BLE).
 // A configuração fica guardada no próprio celular.
-import { data, dataHora, foneFormatado } from './formato'
+import { dataHora, foneFormatado } from './formato'
 import type { Cliente, CondicaoPagamento, Empresa, FormaPagamento, Pedido, Perfil } from './tipos'
 import { NOME_RELATORIO, porCliente, rotuloCliente, somarItens, totaisCarga, type DadosCarga, type TipoRelatorioCarga } from './carga'
 
@@ -93,11 +93,11 @@ class Cupom {
 }
 
 // logo em preto e branco, no tamanho da bobina
-async function logoMonocromatico(larguraPontos: number) {
+async function logoMonocromatico(larguraPontos: number, fator = 0.7) {
   const img = new Image()
   img.src = '/logo.png'
   await img.decode()
-  const larg = Math.floor((larguraPontos * 0.7) / 8) * 8
+  const larg = Math.floor((larguraPontos * fator) / 8) * 8
   const alt = Math.round((img.height * larg) / img.width)
   const cv = document.createElement('canvas'); cv.width = larg; cv.height = alt
   const ctx = cv.getContext('2d')!
@@ -134,32 +134,26 @@ export async function montarCupom(d: DadosCupom, cfg: ConfigImpressora): Promise
   const { pedido: p, cliente: cl, empresa: e } = d
   const troca = d.forma?.conta_como_venda === false
   const end = (o?: { logradouro?: string | null; numero?: string | null; complemento?: string | null; bairro?: string | null; cidade?: string | null; uf?: string | null } | null) =>
-    o?.logradouro ? `Endereco:${o.logradouro}, nro.${o.numero || 'SN'}${o.complemento ? ' ' + o.complemento : ''} - Bairro:${o.bairro ?? ''} Cidade:${o.cidade ?? ''} - ${o.uf ?? ''}` : ''
+    o?.logradouro ? `Endereco: ${o.logradouro}, nro.${o.numero || 'SN'}${o.complemento ? ' ' + o.complemento : ''} - Bairro:${o.bairro ?? ''} Cidade:${o.cidade ?? ''} - ${o.uf ?? ''}` : ''
 
   // Modelo do cupom do sistema antigo (Vendas Mobile), 48 colunas na bobina de 80 mm.
-  // ----- empresa -----
+  // ----- cabeçalho: logo pequena, vendedor, data e hora -----
   if (cfg.qr && cfg.qrTopo && cfg.qrTexto) c.qr(cfg.qrTexto)
-  if (cfg.logo) { try { c.imagem(await logoMonocromatico(pontos)) } catch { /* sem logo */ } }
-  c.quebrado(e?.razao_social || 'Maranata Distribuidora')
-  c.linha('Data:' + new Date().toLocaleString('pt-BR').replace(',', ''))
-  if (d.vendedor?.nome) c.linha('Vend.:' + d.vendedor.nome + '.')
+  if (cfg.logo) { try { c.imagem(await logoMonocromatico(pontos, 0.4)) } catch { /* sem logo */ } }
+  const titulo = p.status === 'orcamento' ? 'ORCAMENTO' : troca ? 'TROCA' : 'PEDIDO'
+  c.centro().negrito().linha(`${titulo} ${p.numero ?? 'provisorio'}`).negrito(false).centro(false)
+  if (d.vendedor?.nome) c.linha('Vendedor: ' + d.vendedor.nome)
+  c.linha('Data: ' + dataHora(p.data_pedido).replace(',', ''))
   c.separador()
 
-  // ----- pedido e cliente -----
-  const titulo = p.status === 'orcamento' ? 'ORCAMENTO' : troca ? 'TROCA' : 'PEDIDO'
-  if (troca) c.negrito().alto()
-  c.linha(`${titulo}:${p.numero ?? 'provisorio'}`)
-  if (troca) c.alto(false).negrito(false)
-  c.linha('Emissao:' + dataHora(p.data_pedido).replace(',', ''))
-  c.quebrado(`Razao:${cl?.codigo ? cl.codigo + '-' : ''}${cl?.razao_social ?? ''}`)
-  if (cl?.nome_fantasia) c.quebrado('Nome fantasia:' + cl.nome_fantasia)
-  if (cl?.cpf_cnpj) c.linha('CNPJ/CPF:' + cl.cpf_cnpj.replace(/\D/g, ''))
-  if (cl?.telefone) c.linha('Fone:' + foneFormatado(cl.telefone))
+  // ----- dados do cliente -----
+  c.quebrado('Razao Social: ' + (cl?.razao_social ?? ''))
+  if (cl?.nome_fantasia) c.quebrado('Fantasia: ' + cl.nome_fantasia)
   const endCli = end(cl)
   if (endCli) c.quebrado(endCli)
-  const pagto = [d.forma?.nome, d.condicao?.nome].filter(Boolean).join(' - ')
-  if (pagto) c.quebrado('Pagto.:' + pagto)
-  if (p.data_entrega) c.linha('Entrega:' + data(p.data_entrega))
+  const fones = [cl?.telefone, cl?.whatsapp].filter((f, k, l): f is string => !!f && l.indexOf(f) === k).map(foneFormatado)
+  const contato = [cl?.contato, ...fones].filter(Boolean).join(' - ')
+  if (contato) c.quebrado('Contato: ' + contato)
   c.separador()
 
   // ----- itens, na ordem digitada -----
